@@ -1,0 +1,54 @@
+# ==========================================
+# LibyAI - .gitignore
+# ==========================================
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# SQLite databases and runtime storage
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+clinic.db
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE, OS, and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Logs & temp files
+*.log
+logs/
+temp/
+tmp/
+
+# System / Agent generated artifacts
+.system_generated/
