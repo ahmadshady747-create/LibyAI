@@ -144,7 +144,7 @@ async def handle_whatsapp_webhook(request: Request):
 
                 # Handle non-text media
                 if msg_type != "text":
-                    unsupported_reply = "ℹ️ مرحباً بك في مصحة الشفاء. نظام الاستقبال الذكي يستقبل حالياً الرسائل النصية. يرجى كتابة استفسارك نصياً لنتمكن من إفادتك فوراً."
+                    unsupported_reply = "ℹ️ مرحباً بك في مستشفى الياسمين الإيوائي. نظام الاستقبال الذكي يستقبل حالياً الرسائل النصية. يرجى كتابة استفسارك نصياً لنتمكن من إفادتك فوراً."
                     is_new, job_id, q_status = job_queue.enqueue_incoming_message(
                         provider="whatsapp",
                         message_id=wamid,

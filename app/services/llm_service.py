@@ -413,11 +413,8 @@ def fallback_patient_responder(query: str, context: str) -> str:
 
 def generate_patient_response(user_message: str, chat_history: Optional[list] = None) -> str:
     """Generates warm, human-like, polite responses for patient inquiries with strict guardrails."""
-    global gemini_client
-    knowledge_context = db_service.get_clinic_knowledge_context()
-
-    if not gemini_client:
-        return fallback_patient_responder(user_message, knowledge_context)
+    import patient_service
+    return patient_service.handle_patient_query("simulator_patient", user_message)
 
     prompt_data = db_service.get_prompt_formatted_data()
 

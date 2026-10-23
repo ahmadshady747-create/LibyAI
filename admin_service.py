@@ -340,23 +340,70 @@ def handle_admin_group_message(
                 logger.info(f"[AdminService] Job {job_id} already committed; returning cached receipt.")
                 return row["confirmation_text"]
 
-    # 1. Require @Bot tag in group
-    tag_pattern = r"(?:@Bot|@bot|@بـوت|@بوت|@مساعد)"
+    # 1. Require @Bot, @تحديث, or @إدارة tag in group
+    tag_pattern = r"(?:@تحديث:|@تحديث|@إدارة|@ادارة|@إداره|@Bot|@bot|@بـوت|@بوت|@مساعد)"
     if not re.search(tag_pattern, raw_message, re.IGNORECASE):
-        # In a staff group, messages without @Bot are ignored to prevent chatter spam
+        # In a staff group, messages without tags are ignored to prevent chatter spam
         return None
 
-    # Clean the bot mention
+    # Handle Management Commands (@إدارة)
+    if re.search(r"@(?:إدارة|ادارة|إداره)", raw_message):
+        is_auth, staff_role, staff_name = db.is_staff_authorized(sender_phone, db_path)
+        if not is_auth or staff_role not in ("owner", "admin"):
+            return "⛔ *غير مصرح:* عذراً، أوامر الإدارة (@إدارة) مخصصة فقط لمدير المستشفى أو المشرف الإداري المعتمد."
+
+        clean_cmd = re.sub(r"@(?:إدارة|ادارة|إداره)", "", raw_message).strip()
+        parts = clean_cmd.split()
+
+        if not parts or parts[0] in ("الموظفين", "عرض", "قائمة", "الكل"):
+            staff_list = db.list_authorized_staff(db_path)
+            lines = [
+                "👥 *قائمة الموظفين والمسؤولين المصرح لهم بمستشفى الياسمين:*",
+                "━━━━━━━━━━━━━━━━━━━━━━"
+            ]
+            for s in staff_list:
+                lines.append(f"• `{s['phone_number']}` | *{s['name']}* ({s['role']})")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append("💡 *أوامر الإدارة المتاحة:*\n• `@إدارة إضافة [الرقم] [الاسم] [الدور]`\n• `@إدارة حذف [الرقم]`")
+            return "\n".join(lines)
+
+        if parts[0] in ("إضافة", "اضافة"):
+            if len(parts) < 2:
+                return "⚠️ الصيغة غير مكتملة. الصيغة: `@إدارة إضافة [رقم الهاتف] [الاسم] [الدور: staff/admin]`"
+            t_phone = parts[1]
+            t_name = parts[2] if len(parts) > 2 else "موظف معتمد"
+            t_role = parts[3] if len(parts) > 3 and parts[3] in ("owner", "admin", "staff") else "staff"
+            db.add_authorized_staff(t_phone, t_name, t_role, db_path)
+            return (
+                "✅ *تمت إضافة الموظف بنجاح* ✅\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📱 *الرقم:* `{t_phone}`\n"
+                f"👤 *الاسم:* {t_name}\n"
+                f"🎖️ *الصلاحية:* {t_role}\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "_أصبح بإمكان هذا الرقم إرسال تحديثات الأطباء عبر أمر (@تحديث)._"
+            )
+
+        if parts[0] in ("حذف", "إلغاء", "الغاء"):
+            if len(parts) < 2:
+                return "⚠️ الصيغة غير مكتملة. الصيغة: `@إدارة حذف [رقم الهاتف]`"
+            t_phone = parts[1]
+            deleted = db.remove_authorized_staff(t_phone, db_path)
+            if deleted:
+                return f"✅ *تم إلغاء الصلاحية بنجاح*\n• تم حذف الرقم `{t_phone}` من قائمة المصرح لهم."
+            return f"⚠️ الرقم `{t_phone}` غير مسجل مسبقاً في قائمة الموظفين المصرح لهم."
+
+        return "ℹ️ لم يتم التعرف على أمر الإدارة. يمكنك كتابة `@إدارة الموظفين` لعرض القائمة والأوامر المتاحة."
+
+    # Clean the update mention
     clean_message = re.sub(tag_pattern, "", raw_message, flags=re.IGNORECASE).strip()
     if not clean_message:
-        return "👋 أهلاً بك زميلي في فريق الاستقبال. لتعديل جدول أو كشفية، اكتب مثلاً:\n`@Bot دكتور العظام علي اعتذر اليوم`"
+        return "👋 أهلاً بك زميلي في فريق الاستقبال. لتعديل جدول أو حالة طبيب، اكتب مثلاً:\n`@تحديث دكتور العظام عبدالله ديهوم اعتذر اليوم`"
 
     # 2. Verify sender authorization
-    clinic_info = db.get_clinic_info(db_path)
-    auth_phones = clinic_info.get("authorized_phones") or clinic_info.get("authorized_staff_phones", "")
-    from app.config import is_phone_authorized
-    if not is_phone_authorized(sender_phone, auth_phones):
-        return "⛔ *غير مصرح:* هذا الرقم غير مسجل ضمن أرقام موظفي المصحة المصرح لهم بالتعديل."
+    is_auth, staff_role, staff_name = db.is_staff_authorized(sender_phone, db_path)
+    if not is_auth:
+        return "⛔ *غير مصرح:* هذا الرقم غير مسجل ضمن أرقام موظفي مستشفى الياسمين المصرح لهم بالتعديل."
 
     # 3. Parse intent via Gemini / Fallback
     intent = parse_staff_message_with_ai(clean_message)
@@ -419,7 +466,16 @@ def handle_admin_group_message(
         new_status = ALLOWED_STATUSES.get(raw_status, "available")
         daily_note = (intent.daily_note or "").strip()
 
-        # 5. Atomic SQLite mutation + audit-log + job completion
+        # 5. Record in daily_overrides for real-time schedule overrides
+        override_row = db.add_daily_override(
+            doctor_name=doctor["name"],
+            status=new_status,
+            note=daily_note,
+            updated_by=sender_phone,
+            db_path=db_path
+        )
+
+        # Atomic SQLite mutation in doctors + audit-log + job completion
         before_label = STATUS_ARABIC_MAP.get(doctor["status"], doctor["status"])
         after_label = STATUS_ARABIC_MAP.get(new_status, new_status)
 
@@ -428,11 +484,11 @@ def handle_admin_group_message(
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👨‍⚕️ *الطبيب:* {doctor['name']} ({doctor['specialty']})\n"
             f"🔄 *حالة التواجد:* {before_label} ⬅️ *{after_label}*\n"
-            f"📝 *الملاحظة اليومية:* {daily_note if daily_note else 'لا توجد ملاحظات خاصة'}\n"
-            f"💰 *سعر الكشف الحالي:* {doctor['consultation_fee']} د.ل\n"
+            f"📝 *الملاحظة:* {daily_note if daily_note else 'لا توجد ملاحظات خاصة'}\n"
+            f"📅 *التاريخ:* {override_row.get('override_date', '')} ({override_row.get('day_of_week', '')})\n"
             f"⏰ *وقت التحديث:* {time_ctx['time_arabic']} (بتوقيت ليبيا)\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "_تم تطبيق التعديل فورياً في قاعدة البيانات وينعكس لحظياً على استفسارات المرضى._"
+            "_تم حفظ التعديل بشكل دائم في جدول التحديثات اليومية (daily_overrides) وينعكس لحظياً على استفسارات المرضى._"
         )
 
         already_applied, status_before, status_after, final_receipt = db.apply_admin_mutation_atomic(

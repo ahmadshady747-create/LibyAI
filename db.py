@@ -264,26 +264,97 @@ def init_db(db_path: str = DB_PATH) -> None:
                 cursor.execute("ALTER TABLE message_jobs ADD COLUMN outbound_attempt_count INTEGER NOT NULL DEFAULT 0;")
 
 
+        # 8. Emergency Clinics (7 days)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS emergency_clinics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            day_of_week TEXT NOT NULL,
+            department TEXT NOT NULL,
+            shift TEXT NOT NULL,
+            shift_time TEXT NOT NULL,
+            doctor_name TEXT NOT NULL
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_em_day_dept ON emergency_clinics(day_of_week, department);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_em_doc ON emergency_clinics(doctor_name);")
+
+        # 9. Followup Clinics (7 days)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS followup_clinics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            day_of_week TEXT NOT NULL,
+            specialty TEXT NOT NULL,
+            doctor_name TEXT NOT NULL,
+            shift_note TEXT DEFAULT ''
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fu_day_spec ON followup_clinics(day_of_week, specialty);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fu_doc ON followup_clinics(doctor_name);")
+
+        # 10. Daily Overrides (Real-time exceptions)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            override_date TEXT NOT NULL,
+            day_of_week TEXT NOT NULL,
+            doctor_name TEXT NOT NULL,
+            clinic_type TEXT NOT NULL DEFAULT 'both',
+            status TEXT NOT NULL CHECK(status IN ('available', 'apologized', 'delayed', 'left', 'arrived', 'booking_closed')),
+            note TEXT DEFAULT '',
+            updated_by TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_overrides_date_doc ON daily_overrides(override_date, doctor_name);")
+
+        # 11. Authorized Staff
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS authorized_staff (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone_number TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL DEFAULT 'موظف',
+            role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'staff')) DEFAULT 'staff',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_staff_phone ON authorized_staff(phone_number);")
+
+        # 12. Persistent Conversation History
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clinic_id TEXT NOT NULL DEFAULT 'jasmine_hospital',
+            sender_phone TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user', 'model', 'system')),
+            message_text TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conv_hist_sender ON conversation_history(clinic_id, sender_phone, created_at);")
+
+
 def seed_default_data(db_path: str = DB_PATH) -> None:
     """Populates default clinic identity, doctors, and services if tables are empty."""
     with get_db(db_path) as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) AS cnt FROM emergency_clinics;")
+        if cursor.fetchone()["cnt"] == 0:
+            from seed_jasmine_hospital import seed_jasmine
+            seed_jasmine(db_path)
 
         # Seed Clinic Info
         default_info = {
-            "name": "مصحة الشفاء التخصصية",
-            "clinic_name": "مصحة الشفاء التخصصية",
-            "address": "طرابلس - طريق الشط، بالقرب من جزيرة الميناء",
-            "emergency_phone": "091-0000000 / 021-3333333",
-            "reception_phone": "092-1111111",
-            "booking_policy": "الحجز يتم بالحضور الشخصي المباشر لمكتب الاستقبال بالطابق الأرضي بدءاً من الساعة 08:00 صباحاً (نظام أسبقية الحضور). لا يتوفر حجز هاتفي مسبق لضمان انتظام الكشوفات.",
-            "map_link": "https://maps.google.com/?q=Tripoli+Clinic",
+            "name": "مستشفى الياسمين الإيوائي",
+            "clinic_name": "مستشفى الياسمين الإيوائي",
+            "address": "زليتن - خلف مدرسة خديجة الكبرى",
+            "emergency_phone": "0911059900 - 0945361562",
+            "reception_phone": "0911059900 - 0945361562",
+            "booking_policy": "الاستفسار والخدمات متاحة 24 ساعة، الحضور والمتابعة بالاستقبال وفق الفترات المعلنة.",
+            "map_link": "https://maps.google.com/?q=Zliten+Jasmine+Hospital",
             "admin_group_id": "clinic_staff_group@g.us",
-            "authorized_staff_phones": "0912345678, 0921111111, 218912345678",
-            "authorized_phones": "0912345678, 0921111111, 218912345678",
-            "payment_methods": "نقداً (كاش)، بطاقات الدفع المصرفي (تداول، نمو)، والخدمات الإلكترونية (سداد، إدفع لي، موبي كاش) بنفس السعر النقدي تماماً وبدون أي عمولة إضافية.",
-            "insurance_companies": "متعاقدون مع تأمين المدار، ليبيانا، الشركة المتحدة للتأمين، وتأمين شركة الكهرباء والنفط. كما نوفر فواتير إلكترونية معتمدة للمرضى التابعين لشركات أخرى لطلب الاسترداد المالي.",
-            "facilities_info": "قسم الطوارئ والمختبر متاحان 24 ساعة يومياً طيلة أيام الأسبوع (بما في ذلك الجمعة والعطلات). المصحة مجهزة بمصاعد طبية حديثة ومجهزة لكبار السن ومرضى العظام وذوي الاحتياجات الخاصة."
+            "authorized_staff_phones": "0911059900, 0945361562, 0912345678",
+            "authorized_phones": "0911059900, 0945361562, 0912345678",
+            "facilities_info": "قسم الإسعاف والطوارئ متاح 24 ساعة يومياً على مدار الأسبوع، غرف إيواء حديثة، عيادات تخصصية، ومختبر متكامل."
         }
         for k, v in default_info.items():
             cursor.execute("INSERT OR IGNORE INTO clinic_info (key, value) VALUES (?, ?);", (k, v))
@@ -375,6 +446,17 @@ def get_all_services(category: Optional[str] = None, db_path: str = DB_PATH) -> 
         return [dict(row) for row in cursor.fetchall()]
 
 
+def norm(text: str) -> str:
+    """Normalizes Arabic text for flexible name/keyword matching."""
+    if not text:
+        return ""
+    t = text.lower()
+    t = t.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    t = t.replace("ة", "ه").replace("ى", "ي")
+    t = t.replace("د.", "").replace("دكتور", "").replace("دكتورة", "")
+    return t.strip()
+
+
 def find_doctor_fuzzy(name_query: Optional[str] = None, specialty_query: Optional[str] = None, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
     """
     Intelligent fuzzy matcher for Libyan dialect variations:
@@ -384,14 +466,6 @@ def find_doctor_fuzzy(name_query: Optional[str] = None, specialty_query: Optiona
     combined_query = f"{name_query or ''} {specialty_query or ''}".strip().lower()
     if not combined_query:
         return None
-
-    # Normalization helper
-    def norm(text: str) -> str:
-        t = text.lower()
-        t = t.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-        t = t.replace("ة", "ه").replace("ى", "ي")
-        t = t.replace("د.", "").replace("دكتور", "").replace("دكتورة", "")
-        return t.strip()
 
     q_norm = norm(combined_query)
     q_tokens = [tok for tok in q_norm.split() if len(tok) > 2]
@@ -699,6 +773,318 @@ def cleanup_expired_sessions(ttl_minutes: int = 60, db_path: str = DB_PATH) -> i
         cursor = conn.cursor()
         cursor.execute("DELETE FROM conversation_sessions WHERE created_at < ?;", (cutoff,))
         return cursor.rowcount
+
+
+# ==========================================
+# Jasmine Shelter Hospital - Dynamic Schedule & Overrides
+# ==========================================
+
+def normalize_day_name(day_str: str) -> str:
+    """Normalizes Libyan/Arabic day names (e.g. 'الاثنين' / 'الإثنين')."""
+    d = day_str.strip()
+    d = d.replace("إ", "ا").replace("أ", "ا").replace("آ", "ا")
+    if "جمعة" in d: return "الجمعة"
+    if "سبت" in d: return "السبت"
+    if "احد" in d or "أحد" in d: return "الأحد"
+    if "اثنين" in d or "إثنين" in d: return "الاثنين"
+    if "ثلاثاء" in d: return "الثلاثاء"
+    if "اربعاء" in d or "أربعاء" in d: return "الأربعاء"
+    if "خميس" in d: return "الخميس"
+    return day_str.strip()
+
+
+def get_daily_schedule(day_name: str, target_date: Optional[str] = None, db_path: str = DB_PATH) -> Dict[str, Any]:
+    """
+    Real-time query for Jasmine Shelter Hospital schedule for a given day:
+    - Queries emergency_clinics (morning, evening, night).
+    - Queries followup_clinics.
+    - Merges active daily_overrides for target_date.
+    - Overrides take precedence over the base weekly schedule.
+    """
+    normalized_day = normalize_day_name(day_name)
+    if not target_date:
+        from app.services.time_utils import get_libya_now
+        target_date = get_libya_now().strftime("%Y-%m-%d")
+
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+
+        # 1. Fetch active daily overrides for target_date or day_of_week
+        cursor.execute("""
+            SELECT * FROM daily_overrides
+            WHERE override_date = ? OR day_of_week = ?
+            ORDER BY id ASC;
+        """, (target_date, normalized_day))
+        override_rows = cursor.fetchall()
+
+        overrides_by_doc = {}
+        for ov in override_rows:
+            norm_name = norm(ov["doctor_name"])
+            overrides_by_doc[norm_name] = dict(ov)
+
+        # 2. Fetch emergency clinics
+        cursor.execute("""
+            SELECT * FROM emergency_clinics
+            WHERE day_of_week = ? OR day_of_week = ?
+            ORDER BY id ASC;
+        """, (normalized_day, "الإثنين" if normalized_day == "الاثنين" else normalized_day))
+        emergency_rows = cursor.fetchall()
+
+        # 3. Fetch followup clinics
+        cursor.execute("""
+            SELECT * FROM followup_clinics
+            WHERE day_of_week = ? OR day_of_week = ?
+            ORDER BY id ASC;
+        """, (normalized_day, "الإثنين" if normalized_day == "الاثنين" else normalized_day))
+        followup_rows = cursor.fetchall()
+
+        status_arabic_map = {
+            "available": "متواجد حسب الجدول المعتاد ✅",
+            "apologized": "معتذر اليوم - غير متواجد ❌",
+            "delayed": "تأخير / تعديل موعد ⏰",
+            "left": "غادر العيادة لليوم 🚪",
+            "arrived": "وصل للعيادة ويستقبل الآن 🩺",
+            "booking_closed": "مكتمل العدد / الحجز مقفل ⛔"
+        }
+
+        # Format emergency clinics with overrides
+        emergency_list = []
+        for r in emergency_rows:
+            item = dict(r)
+            d_norm = norm(item["doctor_name"])
+            matched_override = None
+            for ov_key, ov_val in overrides_by_doc.items():
+                if ov_key in d_norm or d_norm in ov_key:
+                    matched_override = ov_val
+                    break
+
+            if matched_override:
+                item["status"] = matched_override["status"]
+                item["status_display"] = status_arabic_map.get(matched_override["status"], matched_override["status"])
+                item["note"] = matched_override.get("note", "")
+                item["is_overridden"] = True
+            else:
+                item["status"] = "available"
+                item["status_display"] = "متواجد حسب الجدول المعتاد ✅"
+                item["note"] = ""
+                item["is_overridden"] = False
+            emergency_list.append(item)
+
+        # Format followup clinics with overrides
+        followup_list = []
+        for r in followup_rows:
+            item = dict(r)
+            d_norm = norm(item["doctor_name"])
+            matched_override = None
+            for ov_key, ov_val in overrides_by_doc.items():
+                if ov_key in d_norm or d_norm in ov_key:
+                    matched_override = ov_val
+                    break
+
+            if matched_override:
+                item["status"] = matched_override["status"]
+                item["status_display"] = status_arabic_map.get(matched_override["status"], matched_override["status"])
+                item["note"] = matched_override.get("note", "")
+                item["is_overridden"] = True
+            else:
+                item["status"] = "available"
+                item["status_display"] = "متواجد حسب الجدول المعتاد ✅"
+                item["note"] = ""
+                item["is_overridden"] = False
+            followup_list.append(item)
+
+        return {
+            "day_name": normalized_day,
+            "target_date": target_date,
+            "emergency_clinics": emergency_list,
+            "followup_clinics": followup_list,
+            "overrides_applied": list(overrides_by_doc.values())
+        }
+
+
+def add_daily_override(
+    doctor_name: str,
+    status: str,
+    note: str = "",
+    updated_by: str = "staff",
+    day_of_week: Optional[str] = None,
+    override_date: Optional[str] = None,
+    clinic_type: str = "both",
+    db_path: str = DB_PATH
+) -> Dict[str, Any]:
+    """
+    Inserts or updates a daily override for a doctor and commits immediately to SQLite.
+    Returns the saved row dict.
+    """
+    if not override_date:
+        from app.services.time_utils import get_libya_now
+        now = get_libya_now()
+        override_date = now.strftime("%Y-%m-%d")
+        if not day_of_week:
+            from app.services.time_utils import ARABIC_DAYS
+            day_of_week = ARABIC_DAYS.get(now.weekday(), "اليوم")
+
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM daily_overrides
+            WHERE override_date = ? AND doctor_name = ?;
+        """, (override_date, doctor_name))
+
+        cursor.execute("""
+            INSERT INTO daily_overrides (
+                override_date, day_of_week, doctor_name, clinic_type, status, note, updated_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (override_date, day_of_week, doctor_name, clinic_type, status, note, updated_by))
+
+        override_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM daily_overrides WHERE id = ?;", (override_id,))
+        saved_row = dict(cursor.fetchone())
+
+        # Also reflect in legacy doctors table for backwards compatibility
+        cursor.execute("""
+            UPDATE doctors
+            SET status = ?, today_status = ?, daily_note = ?, today_note = ?
+            WHERE name LIKE ?;
+        """, (status, status, note, note, f"%{doctor_name}%"))
+
+        return saved_row
+
+
+def get_active_overrides(target_date: Optional[str] = None, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+    """Returns all active daily overrides for target_date (or today)."""
+    if not target_date:
+        from app.services.time_utils import get_libya_now
+        target_date = get_libya_now().strftime("%Y-%m-%d")
+
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM daily_overrides
+            WHERE override_date = ?
+            ORDER BY id DESC;
+        """, (target_date,))
+        return [dict(r) for r in cursor.fetchall()]
+
+
+# ==========================================
+# Persistent Conversation History
+# ==========================================
+
+def add_conversation_history(
+    sender_phone: str,
+    role: str,
+    message_text: str,
+    clinic_id: str = "jasmine_hospital",
+    db_path: str = DB_PATH
+) -> None:
+    """Records a message turn in conversation_history and conversation_sessions."""
+    valid_role = role if role in ("user", "model", "system") else "user"
+    now_epoch = time.time()
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO conversation_history (clinic_id, sender_phone, role, message_text, created_at)
+            VALUES (?, ?, ?, ?, ?);
+        """, (clinic_id, sender_phone, valid_role, message_text, now_epoch))
+
+        cursor.execute("""
+            INSERT INTO conversation_sessions (phone_number, role, message_text, created_at)
+            VALUES (?, ?, ?, ?);
+        """, (sender_phone, valid_role, message_text, now_epoch))
+
+
+def get_conversation_history(
+    sender_phone: str,
+    limit: int = 6,
+    clinic_id: str = "jasmine_hospital",
+    db_path: str = DB_PATH
+) -> List[Dict[str, str]]:
+    """
+    Fetches the last `limit` messages (chronological order) for (clinic_id, sender_phone).
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT role, message_text
+            FROM conversation_history
+            WHERE sender_phone = ? AND clinic_id = ?
+            ORDER BY id DESC
+            LIMIT ?;
+        """, (sender_phone, clinic_id, limit))
+        rows = cursor.fetchall()
+        return [{"role": r["role"], "text": r["message_text"]} for r in reversed(rows)]
+
+
+# ==========================================
+# Authorized Staff Management (Deterministic SQL)
+# ==========================================
+
+def is_staff_authorized(phone_number: str, db_path: str = DB_PATH) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Checks if phone_number is authorized in authorized_staff or clinic_info.
+    Returns: (is_authorized, role, name)
+    """
+    norm_phone = "".join(filter(str.isdigit, phone_number))
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM authorized_staff;")
+        all_staff = cursor.fetchall()
+        for s in all_staff:
+            s_phone = "".join(filter(str.isdigit, s["phone_number"]))
+            if s_phone and (s_phone in norm_phone or norm_phone in s_phone):
+                return True, s["role"], s["name"]
+
+        cursor.execute("SELECT value FROM clinic_info WHERE key IN ('authorized_staff_phones', 'authorized_phones');")
+        rows = cursor.fetchall()
+        for r in rows:
+            for p in r["value"].split(","):
+                p_digits = "".join(filter(str.isdigit, p))
+                if p_digits and (p_digits in norm_phone or norm_phone in p_digits):
+                    return True, "staff", "موظف معتمد"
+
+    return False, None, None
+
+
+def add_authorized_staff(
+    phone_number: str,
+    name: str = "موظف",
+    role: str = "staff",
+    db_path: str = DB_PATH
+) -> bool:
+    """Adds or updates an authorized staff member."""
+    clean_role = role if role in ("owner", "admin", "staff") else "staff"
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO authorized_staff (phone_number, name, role)
+            VALUES (?, ?, ?);
+        """, (phone_number.strip(), name.strip(), clean_role))
+        return True
+
+
+def remove_authorized_staff(phone_number: str, db_path: str = DB_PATH) -> bool:
+    """Removes an authorized staff member."""
+    norm_phone = "".join(filter(str.isdigit, phone_number))
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, phone_number FROM authorized_staff;")
+        rows = cursor.fetchall()
+        deleted = False
+        for r in rows:
+            p_clean = "".join(filter(str.isdigit, r["phone_number"]))
+            if p_clean and (p_clean in norm_phone or norm_phone in p_clean):
+                cursor.execute("DELETE FROM authorized_staff WHERE id = ?;", (r["id"],))
+                deleted = True
+        return deleted
+
+
+def list_authorized_staff(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+    """Returns all authorized staff."""
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM authorized_staff ORDER BY id ASC;")
+        return [dict(r) for r in cursor.fetchall()]
 
 
 # Initialize database automatically on import if not exists

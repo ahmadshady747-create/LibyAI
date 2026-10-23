@@ -116,19 +116,18 @@ for category, patterns in RED_FLAG_PATTERNS.items():
 
 def build_emergency_directive(clinic_info: Dict[str, str], matched_symptom: str) -> str:
     """Constructs a prominent, WhatsApp-formatted urgent ER directive."""
-    clinic_name = clinic_info.get("name", "مصحة الشفاء التخصصية")
-    emergency_phone = clinic_info.get("emergency_phone", "091-0000000 / 021-3333333")
-    address = clinic_info.get("address", "طرابلس - طريق الشط بالقرب من جزيرة الميناء")
-    map_link = clinic_info.get("map_link", "https://maps.google.com/?q=Tripoli+Clinic")
+    clinic_name = clinic_info.get("name", "مستشفى الياسمين الإيوائي")
+    emergency_phone = clinic_info.get("emergency_phone", "0911059900 - 0945361562")
+    address = clinic_info.get("address", "زليتن - خلف مدرسة خديجة الكبرى")
+    map_link = clinic_info.get("map_link", "https://maps.google.com/?q=Zliten+Jasmine+Hospital")
 
     return (
         "🚨 *تنبيه طبي عاجل وحرج* 🚨\n\n"
         "⚠️ الأعراض المذكورة تشير إلى حالة طارئة محتملة تتطلب تدخلاً طبياً فورياً ولا تحتمل الانتظار!\n\n"
         f"🏥 *يرجى التوجه فوراً وبأقصى سرعة إلى قسم الإسعاف والطوارئ في {clinic_name} (متاح 24 ساعة).* \n\n"
-        f"📞 *أرقام سيارات الإسعاف والطوارئ الفورية:* \n"
+        f"📞 *أرقام الطوارئ والإسعاف:* \n"
         f"*{emergency_phone}*\n\n"
-        f"📍 *العنوان:* {address}\n"
-        f"🗺️ *رابط خرائط جوجل:* {map_link}\n\n"
+        f"📍 *العنوان:* {address}\n\n"
         "_حفظكم الله وعافاكم من كل سوء._"
     )
 

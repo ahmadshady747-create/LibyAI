@@ -28,15 +28,14 @@ def is_update_message(text: str) -> bool:
 
 def process_authorized_staff_message(sender_phone: str, message_text: str) -> Optional[str]:
     """
-    Processes incoming message from authorized staff (private 1:1 or group @bot).
-    Returns confirmation message if processed as an admin update, or None if ignored/unauthorized.
+    Processes incoming message from authorized staff (private 1:1 or group @bot / @تحديث / @إدارة).
+    Delegates to admin_service for unified, atomic SQLite execution.
     """
-    if not is_staff_authorized(sender_phone):
-        return None
-
-    # Parse update with Gemini / NLP
-    parsed = llm_service.parse_admin_update(message_text)
-    action = parsed.get("action", "UNKNOWN")
+    import admin_service
+    tagged_msg = message_text.strip()
+    if not any(tag in tagged_msg.lower() for tag in ["@bot", "@تحديث", "@إدارة", "@ادارة", "@بوت", "@بـوت"]):
+        tagged_msg = f"@تحديث {tagged_msg}"
+    return admin_service.handle_admin_group_message(sender_phone, tagged_msg)
 
     # If message is casual chatter (greeting, question about work, etc.), ignore cleanly
     if action == "CASUAL_CHATTER":
