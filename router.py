@@ -139,10 +139,11 @@ async def receive_webhook(request: Request):
     msg_type = msg_obj.get("type", "")
 
     if msg_type != "text":
+        fac_name = db.get_facility_profile().get("name", "المصحة")
         return {
             "status": "unsupported_media_type",
             "sender": sender,
-            "reply": "ℹ️ مرحباً بك في مستشفى الياسمين الإيوائي. نظام الاستقبال الذكي يستقبل حالياً الرسائل النصية. يرجى كتابة استفسارك نصياً لنتمكن من إفادتك فوراً."
+            "reply": f"ℹ️ مرحباً بك في {fac_name}. نظام الاستقبال الذكي يستقبل حالياً الرسائل النصية. يرجى كتابة استفسارك نصياً لنتمكن من إفادتك فوراً."
         }
 
     text = msg_obj.get("text", {}).get("body", "")

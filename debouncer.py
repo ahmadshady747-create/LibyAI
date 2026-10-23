@@ -97,11 +97,21 @@ class MessageDebouncer:
                 if not fut.done():
                     fut.set_result(response)
         except Exception as e:
+            try:
+                import db
+                prof = db.get_facility_profile()
+                fac_name = prof.get("name", "المصحة")
+                fac_phones = prof.get("contact_numbers") or "مكتب الاستقبال"
+            except Exception:
+                fac_name = "المصحة"
+                fac_phones = "مكتب الاستقبال"
+
             fallback_msg = (
-                "ℹ️ مرحباً بك في مستشفى الياسمين الإيوائي.\n"
+                f"ℹ️ مرحباً بك في {fac_name}.\n"
                 "نعتذر، حدث ضغط مؤقت في معالجة طلبك عبر النظام. يرجى إعادة المحاولة بعد لحظات، "
-                "أو التواصل مع مكتب الاستقبال مباشرة: 0911059900 - 0945361562."
+                f"أو التواصل مع مكتب الاستقبال مباشرة: {fac_phones}."
             )
+
             for fut in futures:
                 if not fut.done():
                     fut.set_result(fallback_msg)

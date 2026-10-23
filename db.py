@@ -333,28 +333,34 @@ def init_db(db_path: str = DB_PATH) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conv_hist_sender ON conversation_history(clinic_id, sender_phone, created_at);")
 
 
-def seed_default_data(db_path: str = DB_PATH) -> None:
+def seed_default_data(db_path: str = DB_PATH, preset: Optional[str] = None) -> None:
     """Populates default clinic identity, doctors, and services if tables are empty."""
     with get_db(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) AS cnt FROM emergency_clinics;")
-        if cursor.fetchone()["cnt"] == 0:
+        if preset == "jasmine":
             from seed_jasmine_hospital import seed_jasmine
             seed_jasmine(db_path)
+            return
 
-        # Seed Clinic Info
+        cursor.execute("SELECT COUNT(*) AS cnt FROM emergency_clinics;")
+        has_em = cursor.fetchone()["cnt"] > 0
+
+        # Seed Clinic Info dynamically from settings / defaults
+        from app.config import settings
         default_info = {
-            "name": "مستشفى الياسمين الإيوائي",
-            "clinic_name": "مستشفى الياسمين الإيوائي",
-            "address": "زليتن - خلف مدرسة خديجة الكبرى",
-            "emergency_phone": "0911059900 - 0945361562",
-            "reception_phone": "0911059900 - 0945361562",
-            "booking_policy": "الاستفسار والخدمات متاحة 24 ساعة، الحضور والمتابعة بالاستقبال وفق الفترات المعلنة.",
-            "map_link": "https://maps.google.com/?q=Zliten+Jasmine+Hospital",
+            "name": settings.CLINIC_NAME,
+            "clinic_name": settings.CLINIC_NAME,
+            "facility_type": getattr(settings, "CLINIC_TYPE", "مصحة"),
+            "address": settings.CLINIC_ADDRESS,
+            "emergency_phone": settings.EMERGENCY_PHONE,
+            "reception_phone": settings.RECEPTION_PHONE,
+            "contact_numbers": f"{settings.RECEPTION_PHONE} - {settings.EMERGENCY_PHONE}" if settings.EMERGENCY_PHONE != settings.RECEPTION_PHONE else settings.RECEPTION_PHONE,
+            "booking_policy": settings.BOOKING_POLICY,
+            "map_link": settings.CLINIC_MAP_LINK,
             "admin_group_id": "clinic_staff_group@g.us",
-            "authorized_staff_phones": "0911059900, 0945361562, 0912345678",
-            "authorized_phones": "0911059900, 0945361562, 0912345678",
-            "facilities_info": "قسم الإسعاف والطوارئ متاح 24 ساعة يومياً على مدار الأسبوع، غرف إيواء حديثة، عيادات تخصصية، ومختبر متكامل."
+            "authorized_staff_phones": settings.AUTHORIZED_STAFF_PHONES,
+            "authorized_phones": settings.AUTHORIZED_STAFF_PHONES,
+            "facilities_info": "الخدمات متوفرة وفق الجداول والمواعيد المعتمدة.",
         }
         for k, v in default_info.items():
             cursor.execute("INSERT OR IGNORE INTO clinic_info (key, value) VALUES (?, ?);", (k, v))
@@ -425,6 +431,102 @@ def update_clinic_info_key(key: str, value: str, db_path: str = DB_PATH) -> None
             INSERT INTO clinic_info (key, value) VALUES (?, ?)
             ON CONFLICT(key) DO UPDATE SET value = excluded.value;
             """, (alias_map[key], value))
+
+
+def get_facility_profile(db_path: str = DB_PATH) -> Dict[str, Any]:
+    """
+    Returns a unified facility profile loaded dynamically from clinic_info
+    and environment variables, ensuring zero hardcoding for any clinic or business.
+    """
+    info = get_clinic_info(db_path)
+    name = (
+        info.get("clinic_name")
+        or info.get("name")
+        or os.environ.get("CLINIC_NAME")
+        or "المصحة الطبية"
+    )
+    facility_type = (
+        info.get("facility_type")
+        or info.get("clinic_type")
+        or os.environ.get("CLINIC_TYPE")
+        or ("مستشفى إيوائي" if "مستشفى" in name else "مصحة" if "مصحة" in name else "مجمع عيادات" if "عيادات" in name else "مركز خدمات")
+    )
+    address = (
+        info.get("address")
+        or info.get("clinic_address")
+        or os.environ.get("CLINIC_ADDRESS")
+        or "ليبيا"
+    )
+    city = info.get("city") or os.environ.get("CLINIC_CITY") or ""
+    if not city:
+        for c in ["زليتن", "طرابلس", "بنغازي", "مصراتة", "الزاوية", "البيضاء", "طبرق", "سبها", "سرت", "الخمس", "درنة"]:
+            if c in address:
+                city = c
+                break
+
+    emergency_phone = (
+        info.get("emergency_phone")
+        or os.environ.get("EMERGENCY_PHONE")
+        or "0910000000"
+    )
+    reception_phone = (
+        info.get("reception_phone")
+        or info.get("contact_numbers")
+        or os.environ.get("RECEPTION_PHONE")
+        or emergency_phone
+    )
+    contact_numbers = info.get("contact_numbers") or (
+        f"{reception_phone} - {emergency_phone}" if emergency_phone != reception_phone else reception_phone
+    )
+    booking_policy = (
+        info.get("booking_policy")
+        or os.environ.get("BOOKING_POLICY")
+        or "الاستفسار والخدمات متاحة وفق الفترات المعلنة، والحضور أو الحجز عبر مكتب الاستقبال."
+    )
+    map_link = info.get("map_link") or os.environ.get("CLINIC_MAP_LINK") or ""
+    facilities_info = info.get("facilities_info") or "الخدمات متوفرة وفق الجداول والمواعيد المعتمدة."
+
+    non_medical_keywords = ["مكتب", "شركة", "معهد", "مركز تدريب", "صيانة", "استشارات", "محاماة", "خدمات عامة"]
+    is_medical = not any(k in name for k in non_medical_keywords) and not (facility_type in ["مكتب", "شركة", "معهد", "خدمات عامة"])
+
+    shifts_info = info.get("shifts_info") or (
+        "• الفترة الصباحية: 08:00 ص إلى 02:00 ظ\n"
+        "• الفترة المسائية: 02:00 ظ إلى 08:00 م\n"
+        "• الفترة الليلية / الطوارئ: متاحة حسب جدول المناوبات"
+    )
+
+    return {
+        "name": name,
+        "clinic_name": name,
+        "facility_type": facility_type,
+        "address": address,
+        "city": city,
+        "emergency_phone": emergency_phone,
+        "reception_phone": reception_phone,
+        "contact_numbers": contact_numbers,
+        "booking_policy": booking_policy,
+        "map_link": map_link,
+        "facilities_info": facilities_info,
+        "is_medical": is_medical,
+        "shifts_info": shifts_info,
+    }
+
+
+def update_facility_profile(profile_data: Dict[str, Any], db_path: str = DB_PATH) -> None:
+    """Updates active facility profile in clinic_info."""
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        for k, v in profile_data.items():
+            if v is not None:
+                cursor.execute("""
+                    INSERT INTO clinic_info (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                """, (k, str(v)))
+                if k == "name":
+                    cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('clinic_name', ?);", (str(v),))
+                elif k == "clinic_name":
+                    cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('name', ?);", (str(v),))
+
 
 
 def get_all_doctors(db_path: str = DB_PATH) -> List[Dict[str, Any]]:

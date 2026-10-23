@@ -94,10 +94,13 @@ def seed_jasmine(db_path: str = DB_PATH):
     clinic_constants = {
         "name": "مستشفى الياسمين الإيوائي",
         "clinic_name": "مستشفى الياسمين الإيوائي",
+        "facility_type": "مستشفى إيوائي",
         "english_name": "Jasmine Shelter Hospital",
         "address": "زليتن - خلف مدرسة خديجة الكبرى",
+        "city": "زليتن",
         "emergency_phone": "0911059900 - 0945361562",
         "reception_phone": "0911059900 - 0945361562",
+        "is_medical": "1",
         "contact_numbers": "0911059900 - 0945361562",
         "map_link": "https://maps.google.com/?q=Zliten+Jasmine+Hospital",
         "shift_morning": "من الساعة 08:00 صباحاً إلى 02:00 ظهراً",

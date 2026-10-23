@@ -114,12 +114,12 @@ for category, patterns in RED_FLAG_PATTERNS.items():
     COMPILED_RED_FLAGS[category] = compiled_list
 
 
-def build_emergency_directive(clinic_info: Dict[str, str], matched_symptom: str) -> str:
+def build_emergency_directive(clinic_info: Dict[str, Any], matched_symptom: str) -> str:
     """Constructs a prominent, WhatsApp-formatted urgent ER directive."""
-    clinic_name = clinic_info.get("name", "مستشفى الياسمين الإيوائي")
-    emergency_phone = clinic_info.get("emergency_phone", "0911059900 - 0945361562")
-    address = clinic_info.get("address", "زليتن - خلف مدرسة خديجة الكبرى")
-    map_link = clinic_info.get("map_link", "https://maps.google.com/?q=Zliten+Jasmine+Hospital")
+    clinic_name = clinic_info.get("clinic_name") or clinic_info.get("name") or "المصحة"
+    emergency_phone = clinic_info.get("emergency_phone") or clinic_info.get("contact_numbers") or clinic_info.get("reception_phone") or "أرقام الطوارئ"
+    address = clinic_info.get("address") or "المقر الرئيسي"
+    map_link = clinic_info.get("map_link") or ""
 
     return (
         "🚨 *تنبيه طبي عاجل وحرج* 🚨\n\n"
@@ -130,6 +130,7 @@ def build_emergency_directive(clinic_info: Dict[str, str], matched_symptom: str)
         f"📍 *العنوان:* {address}\n\n"
         "_حفظكم الله وعافاكم من كل سوء._"
     )
+
 
 
 def build_clinical_advice_refusal(clinic_info: Dict[str, str]) -> str:
@@ -147,13 +148,24 @@ def build_clinical_advice_refusal(clinic_info: Dict[str, str]) -> str:
 
 def evaluate_triage(
     text: str,
-    clinic_info: Optional[Dict[str, str]] = None
+    clinic_info: Optional[Dict[str, Any]] = None
 ) -> TriageResult:
     """
     Evaluates incoming patient text through the dual-layer clinical triage engine.
     Returns TriageResult with Level 1, Level 2, or Level 3 determination.
+    If the facility is non-medical (is_medical=False), clinical checks are bypassed.
     """
     clinic_info = clinic_info or {}
+    is_medical = clinic_info.get("is_medical", True)
+    if not is_medical:
+        return TriageResult(
+            level=TriageLevel.ROUTINE_LEVEL_3,
+            is_emergency=False,
+            is_clinical_advice_prohibited=False,
+            matched_flags=[],
+            immediate_response=None
+        )
+
     norm_text = normalize_arabic(text)
 
     # -------------------------------------------------------------

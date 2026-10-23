@@ -1,7 +1,8 @@
 """
 LibyAI Patient Reception Service (`patient_service.py`)
 Grounded, Zero-Mock Production Receptionist for:
-مستشفى الياسمين الإيوائي (Jasmine Shelter Hospital) - زليتن
+Any Clinic, Hospital, Healthcare Center, or Professional Service Facility in Libya.
+
 
 Features:
 - Dynamic Real-Time Context Injection (Fresh DB fetch per request).
@@ -82,20 +83,42 @@ def detect_target_day(query: str, current_day: str) -> str:
     return current_day
 
 
-def build_system_instruction(clinic_info: Dict[str, str], daily_schedule: Dict[str, Any], time_ctx: Dict[str, str]) -> str:
+def build_system_instruction(clinic_info: Dict[str, Any], daily_schedule: Dict[str, Any], time_ctx: Dict[str, str]) -> str:
     """
-    Builds strictly grounded system instruction for Jasmine Shelter Hospital.
+    Builds strictly grounded system instruction for ANY clinic, hospital, or service facility.
+    Dynamically loads facility profile and parameterizes all references.
     Zero hallucination: only answers with data retrieved from SQLite.
     """
-    clinic_name = clinic_info.get("name", "مستشفى الياسمين الإيوائي (Jasmine Shelter Hospital)")
-    address = clinic_info.get("address", "زليتن - خلف مدرسة خديجة الكبرى")
-    phones = clinic_info.get("contact_numbers", "0911059900 - 0945361562")
-    booking_policy = clinic_info.get("booking_policy", "الاستفسار والخدمات متاحة 24 ساعة، الحضور والمتابعة بالاستقبال وفق الفترات المعلنة.")
+    clinic_name = clinic_info.get("clinic_name") or clinic_info.get("name") or "المصحة"
+    facility_type = clinic_info.get("facility_type") or ("مستشفى" if "مستشفى" in clinic_name else "مصحة" if "مصحة" in clinic_name else "مركز خدمات")
+    address = clinic_info.get("address", "ليبيا")
+    city = clinic_info.get("city", "")
+    if not city:
+        for c in ["زليتن", "طرابلس", "بنغازي", "مصراتة", "الزاوية", "البيضاء", "طبرق", "سبها", "سرت", "الخمس", "درنة"]:
+            if c in address:
+                city = c
+                break
+    city_suffix = f" في {city}" if city else ""
+
+    emergency_phone = clinic_info.get("emergency_phone") or "0910000000"
+    reception_phone = clinic_info.get("reception_phone") or clinic_info.get("contact_numbers") or emergency_phone
+    phones = clinic_info.get("contact_numbers") or (
+        f"{reception_phone} - {emergency_phone}" if emergency_phone != reception_phone else reception_phone
+    )
+    booking_policy = clinic_info.get("booking_policy", "الاستفسار والخدمات متاحة وفق الفترات المعلنة، والحضور أو الحجز عبر مكتب الاستقبال.")
+    facilities_info = clinic_info.get("facilities_info", "الخدمات متوفرة وفق الجداول والمواعيد المعتمدة.")
+    shifts_info = clinic_info.get("shifts_info") or (
+        "• الفترة الصباحية: 08:00 ص إلى 02:00 ظ\n"
+        "• الفترة المسائية: 02:00 ظ إلى 08:00 م\n"
+        "• الفترة الليلية / الطوارئ: متاحة حسب جدول المناوبات"
+    )
+
+    is_medical = clinic_info.get("is_medical", True)
 
     target_day = daily_schedule.get("day_name", time_ctx.get("day_name", "اليوم"))
     target_date = daily_schedule.get("target_date", "")
 
-    # Format Emergency Clinics
+    # Format Emergency / Urgent Clinics
     em_lines = []
     for em in daily_schedule.get("emergency_clinics", []):
         st_text = em.get("status_display", "متواجد ✅")
@@ -103,58 +126,63 @@ def build_system_instruction(clinic_info: Dict[str, str], daily_schedule: Dict[s
         em_lines.append(
             f"• قسم {em['department']} | الفترة {em['shift']} ({em['shift_time']}): {em['doctor_name']} | الحالة: [{st_text}]{note_str}"
         )
-    emergency_block = "\n".join(em_lines) if em_lines else "لا توجد عيادات طوارئ مسجلة لهذا اليوم."
+    emergency_block = "\n".join(em_lines) if em_lines else "لا توجد مناوبات طوارئ/فترات مسجلة لهذا اليوم."
 
-    # Format Followup Clinics
+    # Format Followup Clinics / Consultations
     fu_lines = []
     for fu in daily_schedule.get("followup_clinics", []):
         st_text = fu.get("status_display", "متواجد ✅")
         note_str = f" | ملاحظة: {fu['note']}" if fu.get("note") else ""
         timing_str = f" | التوقيت: {fu['shift_note']}" if fu.get("shift_note") else ""
         fu_lines.append(
-            f"• عيادة {fu['specialty']}: {fu['doctor_name']}{timing_str} | الحالة: [{st_text}]{note_str}"
+            f"• تخصص/قسم {fu['specialty']}: {fu['doctor_name']}{timing_str} | الحالة: [{st_text}]{note_str}"
         )
-    followup_block = "\n".join(fu_lines) if fu_lines else "لا توجد عيادات متابعة مسجلة لهذا اليوم."
+    followup_block = "\n".join(fu_lines) if fu_lines else "لا توجد عيادات متابعة/استشارات مسجلة لهذا اليوم."
 
     # Format Active Overrides
     ov_lines = []
     for ov in daily_schedule.get("overrides_applied", []):
         ov_lines.append(
-            f"• الطبيب: {ov.get('doctor_name')} -> الحالة الحالية: [{ov.get('status')}] (ملاحظة: {ov.get('note', '')})"
+            f"• المسؤول/الطبيب: {ov.get('doctor_name')} -> الحالة الحالية: [{ov.get('status')}] (ملاحظة: {ov.get('note', '')})"
         )
-    overrides_block = "\n".join(ov_lines) if ov_lines else "لا توجد اعتذارات أو استثناءات مسجلة اليوم (جميع الأطباء وفق جدولهم الطبيعي)."
+    overrides_block = "\n".join(ov_lines) if ov_lines else "لا توجد اعتذارات أو استثناءات مسجلة اليوم (جميع الكوادر وفق جدولهم الطبيعي)."
+
+    if is_medical:
+        role_desc = f'أنت موظف الاستقبال الآلي الرسمي لـ "{clinic_name}" ({facility_type}){city_suffix}.'
+        guardrail_rule = f'5. الحارس الطبي: يُمنع منعاً باتاً تشخيص الأمراض أو وصف أي دواء أو تحديد جرعات طبية. في حالات الطوارئ الحادة والحرجة، وجّه المريض فوراً لزيارة قسم الإسعاف والطوارئ في {clinic_name} على العنوان ({address}) أو الاتصال فوراً بأرقام الطوارئ: ({phones}).'
+    else:
+        role_desc = f'أنت موظف الاستقبال وخدمة العملاء الآلي لـ "{clinic_name}" ({facility_type}){city_suffix}.'
+        guardrail_rule = f'5. القواعد المهنية: تقديم المعلومات بدقة استناداً إلى جدول الخدمات والمستشارين المتاحين فقط. في المسائل التخصصية المعقدة، وجّه العميل لحجز موعد استشارة بمقر {clinic_name} على العنوان ({address}) أو التواصل مع إدارة المرفق على ({phones}).'
 
     return f"""
-أنت موظف الاستقبال الآلي الرسمي لـ "{clinic_name}" في زليتن.
-مهمتك: الرد على استفسارات المرضى والمراجعين عبر واتساب بأسلوب ليبي مهذب، محترم، مختصر ومباشر.
+{role_desc}
+مهمتك: الرد على استفسارات المراجعين والعملاء عبر واتساب بأسلوب ليبي مهذب، محترم، مختصر ومباشر.
 
 -------------------------
-[بيانات المستشفى والثوابت العامة]
+[بيانات المرفق والثوابت العامة]
 -------------------------
 • اسم المرفق: {clinic_name}
+• نوع المرفق: {facility_type}
 • العنوان: {address}
 • أرقام التواصل والاستفسار: {phones}
-• الفترات الزمنية العامة المعتمدة:
-  - الفترة الصباحية (ص): من الساعة 08:00 صباحاً إلى 02:00 ظهراً.
-  - الفترة المسائية (م): من الساعة 02:00 ظهراً إلى 08:00 مساءً.
-  - الفترة الليلية: من الساعة 08:00 مساءً إلى 08:00 صباحاً.
-  (ملاحظة هامة: هذه التوقيتات عامة تقريبية لحضور أطباء عيادات المتابعة وليست مخصصة بدقة لكل عيادة على حدة).
-• قسم الإسعاف والطوارئ يعمل على مدار 24 ساعة يومياً طيلة أيام الأسبوع (بما فيها الجمعة والعطلات).
+• الفترات ومواعيد العمل المعتمدة:
+{shifts_info}
+• الخدمات والتسهيلات: {facilities_info}
 • نظام الحجز: {booking_policy}
 
 -------------------------
 [السياق الزمني المعتمد لليوم]
 -------------------------
-• توقيت ليبيا الحالي (طرابلس/زليتن): {time_ctx.get('summary', '')}
+• توقيت ليبيا الحالي: {time_ctx.get('summary', '')}
 • اليوم المستعلم عنه: {target_day} ({target_date})
 
 -------------------------
 [البيانات الحية المسحوبة لحظياً من قاعدة البيانات ليوم {target_day}]
 -------------------------
-[1] عيادات الإسعاف والطوارئ ({target_day}):
+[1] المناوبات والأقسام الأساسية ({target_day}):
 {emergency_block}
 
-[2] عيادات المتابعة التخصصية ({target_day}):
+[2] العيادات التخصصية والاستشارات ({target_day}):
 {followup_block}
 
 [3] الاستثناءات والتحديثات اللحظية المعتمدة لليوم:
@@ -164,29 +192,38 @@ def build_system_instruction(clinic_info: Dict[str, str], daily_schedule: Dict[s
 [قواعد صارمة لمنع الهلوسة والالتزام بالبيانات (Zero Hallucination)]
 -------------------------
 1. أنت مقيد بنسبة 100% بالبيانات الحية المرفقة أعلاه فقط.
-2. يُمنع منعاً باتاً اختراع أي اسم طبيب، أو تخمين موعد من عندك، أو تأليف أسعار كشوفات غير واردة في البيانات.
-3. إذا سأل المريض عن طبيب أو تخصص غير موجود في قائمة اليوم أعلاه، قل له بوضوح وأدب:
-   "هذا التخصص/الطبيب غير مدرج في جدول اليوم، يمكنك التواصل مع الاستقبال على الرقم 0911059900 أو 0945361562 للتأكد."
-4. إذا كان الطبيب مسجلاً كـ [معتذر اليوم - غير متواجد ❌]، يجب أن تخبر المريض بوضوح أنه معتذر اليوم وغير متواجد.
-5. الحارس الطبي: يُمنع منعاً باتاً تشخيص الأمراض أو وصف أي دواء أو تحديد جرعات طبية. في حالات الطوارئ الحادة، وجّه المريض فوراً لزيارة قسم الإسعاف والطوارئ بالمستشفى (مفتوح 24 ساعة في زليتن - خلف مدرسة خديجة الكبرى).
-6. التنسيق: استخدم نجوم *الخط العريض* لأسماء الأطباء والفترات لتكون الرسالة واضحة وسريعة القراءة على واتساب.
+2. يُمنع منعاً باتاً اختراع أي اسم، أو تخمين موعد من عندك، أو تأليف أسعار غير واردة في البيانات.
+3. إذا سأل المراجع عن شخص/طبيب/تخصص أو خدمة غير مدرجة في جدول اليوم أعلاه، قل له بوضوح وأدب:
+   "هذا التخصص/الاسم غير مدرج في جدول اليوم، يمكنك التواصل مع الاستقبال على الرقم ({phones}) للتأكد من المواعيد القادمة."
+4. إذا كان الشخص أو الطبيب مسجلاً كـ [معتذر اليوم - غير متواجد ❌]، يجب أن تخبر المراجع بوضوح أنه معتذر اليوم وغير متواجد.
+{guardrail_rule}
+6. التنسيق: استخدم نجوم *الخط العريض* للأسماء والفترات لتكون الرسالة واضحة وسريعة القراءة على واتساب.
 """
 
 
-def fallback_patient_answer(query: str, clinic_info: Dict[str, str], daily_schedule: Dict[str, Any]) -> str:
+def fallback_patient_answer(query: str, clinic_info: Dict[str, Any], daily_schedule: Dict[str, Any]) -> str:
     """
     Deterministic fallback grounded 100% in SQLite data if LLM is unavailable.
+    Completely dynamic for any clinic or facility.
     """
     q = query.lower()
-    phones = clinic_info.get("contact_numbers", "0911059900 - 0945361562")
-    address = clinic_info.get("address", "زليتن - خلف مدرسة خديجة الكبرى")
+    clinic_name = clinic_info.get("clinic_name") or clinic_info.get("name") or "المصحة"
+    phones = clinic_info.get("contact_numbers") or clinic_info.get("reception_phone") or "أرقام الاستقبال"
+    address = clinic_info.get("address", "ليبيا")
+    city = clinic_info.get("city", "")
+    city_suffix = f" في {city}" if city else ""
+    shifts_info = clinic_info.get("shifts_info") or (
+        "• *الفترة الصباحية:* 08:00 ص إلى 02:00 ظ\n"
+        "• *الفترة المسائية:* 02:00 ظ إلى 08:00 م\n"
+        "• *الفترة الليلية / الطوارئ:* متاحة حسب جدول المناوبات"
+    )
     day_name = daily_schedule.get("day_name", "اليوم")
 
     # 1. Address / Location
     if any(k in q for k in ["عنوان", "مكان", "وين", "موقع", "وين تجوا", "خريطة"]):
         return (
             "أهلاً بك 🌸\n\n"
-            f"📍 *عنوان مستشفى الياسمين الإيوائي:*\n"
+            f"📍 *عنوان {clinic_name}:*\n"
             f"{address}\n\n"
             f"📞 *للتواصل والاستفسار:* {phones}"
         )
@@ -194,14 +231,12 @@ def fallback_patient_answer(query: str, clinic_info: Dict[str, str], daily_sched
     # 2. Working hours / Shifts
     if any(k in q for k in ["دوام", "ساعات", "فترات", "امتى تفتحوا", "توقيت", "وقت"]):
         return (
-            f"أهلاً بك 🌸 الفترات الزمنية المعتمدة في مستشفى الياسمين:\n\n"
-            "• *الفترة الصباحية:* 08:00 ص إلى 02:00 ظ\n"
-            "• *الفترة المسائية:* 02:00 ظ إلى 08:00 م\n"
-            "• *الفترة الليلية:* 08:00 م إلى 08:00 ص\n\n"
-            "🚨 *قسم الإسعاف والطوارئ:* يعمل 24 ساعة يومياً على مدار الأسبوع."
+            f"أهلاً بك 🌸 الفترات الزمنية ومواعيد العمل المعتمدة في {clinic_name}:\n\n"
+            f"{shifts_info}\n\n"
+            f"📞 *للاستفسار المباشر:* {phones}"
         )
 
-    # 3. Doctor / Specialty Search in daily_schedule
+    # 3. Doctor / Specialty / Service Search in daily_schedule
     norm_q = db.norm(query)
     matched_emergency = []
     for em in daily_schedule.get("emergency_clinics", []):
@@ -216,28 +251,29 @@ def fallback_patient_answer(query: str, clinic_info: Dict[str, str], daily_sched
     if matched_emergency or matched_followup:
         res_lines = [f"أهلاً بك 🌸 إليك بيانات الجدول ليوم *{day_name}*:\n"]
         if matched_emergency:
-            res_lines.append("🏥 *عيادات الإسعاف والطوارئ:*")
+            res_lines.append("🏥 *المناوبات والكوادر المتاحة:*")
             for em in matched_emergency:
                 res_lines.append(f"• *{em['doctor_name']}* ({em['department']}) | الفترة {em['shift']} ({em['shift_time']}) | الحالة: {em['status_display']}")
             res_lines.append("")
 
         if matched_followup:
-            res_lines.append("🩺 *عيادات المتابعة:*")
+            res_lines.append("🩺 *العيادات والاستشارات:*")
             for fu in matched_followup:
                 note_str = f" ({fu['shift_note']})" if fu.get("shift_note") else ""
                 res_lines.append(f"• *{fu['doctor_name']}* ({fu['specialty']}){note_str} | الحالة: {fu['status_display']}")
             res_lines.append("")
 
-        res_lines.append(f"📍 *المستشفى:* {address}\n📞 *الاستقبال:* {phones}")
+        res_lines.append(f"📍 *المقر:* {address}\n📞 *الاستقبال:* {phones}")
         return "\n".join(res_lines)
 
     # Default strictly grounded message
     return (
-        f"مرحباً بك في خدمة الاستقبال الآلي لـ *مستشفى الياسمين الإيوائي* في زليتن 🌸\n\n"
-        f"يسعدني مساعدتك في معرفة أطباء وعيادات اليوم ({day_name})، مواعيد الفترات، أو موقع المستشفى.\n\n"
-        f"إذا كنت تسأل عن طبيب أو تخصص معين ولم تجده، يرجى التواصل مباشرة مع الاستقبال على الأرقام:\n"
+        f"مرحباً بك في خدمة الاستقبال الآلي لـ *{clinic_name}*{city_suffix} 🌸\n\n"
+        f"يسعدني مساعدتك في معرفة جداول اليوم ({day_name})، مواعيد الفترات، أو موقع ومقر المرفق.\n\n"
+        f"إذا كنت تسأل عن قسم أو تخصص معين ولم تجده، يرجى التواصل مباشرة مع الاستقبال على الأرقام:\n"
         f"📞 *{phones}*"
     )
+
 
 
 def handle_patient_query(phone_number: str, query: str) -> str:
@@ -249,7 +285,7 @@ def handle_patient_query(phone_number: str, query: str) -> str:
     4. Strict grounding with Zero Hallucination.
     5. Durable saving of user and model turns to `conversation_history`.
     """
-    clinic_info = db.get_clinic_info()
+    clinic_info = db.get_facility_profile()
     time_ctx = get_libya_datetime_context()
     current_day = time_ctx.get("day_name", "الجمعة")
 

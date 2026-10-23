@@ -357,8 +357,9 @@ def handle_admin_group_message(
 
         if not parts or parts[0] in ("الموظفين", "عرض", "قائمة", "الكل"):
             staff_list = db.list_authorized_staff(db_path)
+            facility_name = db.get_facility_profile(db_path).get("name", "المصحة")
             lines = [
-                "👥 *قائمة الموظفين والمسؤولين المصرح لهم بمستشفى الياسمين:*",
+                f"👥 *قائمة الموظفين والمسؤولين المصرح لهم بـ {facility_name}:*",
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ]
             for s in staff_list:
@@ -403,7 +404,8 @@ def handle_admin_group_message(
     # 2. Verify sender authorization
     is_auth, staff_role, staff_name = db.is_staff_authorized(sender_phone, db_path)
     if not is_auth:
-        return "⛔ *غير مصرح:* هذا الرقم غير مسجل ضمن أرقام موظفي مستشفى الياسمين المصرح لهم بالتعديل."
+        facility_name = db.get_facility_profile(db_path).get("name", "المصحة")
+        return f"⛔ *غير مصرح:* هذا الرقم غير مسجل ضمن أرقام موظفي {facility_name} المصرح لهم بالتعديل."
 
     # 3. Parse intent via Gemini / Fallback
     intent = parse_staff_message_with_ai(clean_message)

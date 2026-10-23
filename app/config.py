@@ -5,13 +5,14 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "LibyAI - Smart Clinic Reception Bot"
-    CLINIC_NAME: str = "مستشفى الياسمين الإيوائي"
-    CLINIC_ADDRESS: str = "زليتن - خلف مدرسة خديجة الكبرى"
-    CLINIC_MAP_LINK: str = "https://maps.google.com/?q=Zliten+Jasmine+Hospital"
-    EMERGENCY_PHONE: str = "0911059900 - 0945361562"
-    RECEPTION_PHONE: str = "0911059900 - 0945361562"
-    BOOKING_POLICY: str = "الاستفسار والخدمات متاحة 24 ساعة، الحضور والمتابعة بالاستقبال وفق الفترات المعلنة."
+    PROJECT_NAME: str = "LibyAI - Smart Reception Bot"
+    CLINIC_NAME: str = os.getenv("CLINIC_NAME", "المصحة الطبية")
+    CLINIC_TYPE: str = os.getenv("CLINIC_TYPE", "مصحة")
+    CLINIC_ADDRESS: str = os.getenv("CLINIC_ADDRESS", "ليبيا")
+    CLINIC_MAP_LINK: str = os.getenv("CLINIC_MAP_LINK", "")
+    EMERGENCY_PHONE: str = os.getenv("EMERGENCY_PHONE", "0910000000")
+    RECEPTION_PHONE: str = os.getenv("RECEPTION_PHONE", "0910000000")
+    BOOKING_POLICY: str = os.getenv("BOOKING_POLICY", "الاستفسار والخدمات متاحة خلال فترات الدوام المعلنة، والحضور أو الحجز عبر مكتب الاستقبال.")
     
     # AI / LLM Configuration
     GEMINI_API_KEY: Optional[str] = None
