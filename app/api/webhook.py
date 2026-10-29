@@ -45,7 +45,15 @@ async def verify_webhook(request: Request):
     challenge = params.get("hub.challenge")
 
     verify_token = db.get_clinic_info().get("whatsapp_verify_token") or settings.WHATSAPP_VERIFY_TOKEN
-    if mode == "subscribe" and token == verify_token:
+    # Both sides must be present: previously a missing token on both sides
+    # compared equal and could pass verification with no token at all.
+    if (
+        mode == "subscribe"
+        and token
+        and verify_token
+        and challenge is not None
+        and hmac.compare_digest(token, verify_token)
+    ):
         return Response(content=challenge, media_type="text/plain")
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verification failed")
 

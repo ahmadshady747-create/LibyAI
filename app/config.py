@@ -19,18 +19,30 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     
     # WhatsApp Webhook Verification & Security
-    WHATSAPP_VERIFY_TOKEN: str = "LIBYAI_CLINIC_VERIFY_TOKEN_2026"
+    # No development defaults for any secret: a missing secret must fail
+    # closed (webhook verification rejects, simulator admin rejects) rather
+    # than silently using a value anyone who read the code would know.
+    WHATSAPP_VERIFY_TOKEN: Optional[str] = None
     WHATSAPP_TOKEN: Optional[str] = None
     WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
-    WHATSAPP_APP_SECRET: Optional[str] = "dev_meta_app_secret_libyai_2026"
-    
+    WHATSAPP_APP_SECRET: Optional[str] = None
+
     # Database
     DATABASE_URL: str = "sqlite:///./clinic.db"
-    
+
     # Security & Administration
-    ADMIN_SECRET_KEY: str = "libyai_admin_secret_2026"
-    ENVIRONMENT: str = "development"
+    ADMIN_SECRET_KEY: Optional[str] = None
+    # Default to production (fail-closed). Local development via run.py
+    # explicitly sets ENVIRONMENT=development before importing the app.
+    ENVIRONMENT: str = "production"
     ENABLE_PROD_SIMULATOR: bool = False
+    # Comma-separated CORS origins. The simulator is served same-origin, so
+    # the default is local origins only; production must set this explicitly
+    # to the real frontend origin(s) instead of opening to every origin.
+    ALLOWED_ORIGINS: str = os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000",
+    )
     
     # Authorized Staff Phone numbers for Private 1:1 Updates (Comma-separated)
     AUTHORIZED_STAFF_PHONES: str = "0912345678,0921111111,218912345678"
@@ -43,7 +55,11 @@ def validate_production_security(s: Settings = None) -> None:
     """
     Enforces fail-closed startup behavior in production.
     Raises RuntimeError if ENVIRONMENT is production and WHATSAPP_APP_SECRET
-    is missing, blank, or using the development default.
+    is missing, blank, or using a previously published development default.
+    A missing ADMIN_SECRET_KEY or WHATSAPP_VERIFY_TOKEN is not a startup
+    error by design: those endpoints fail closed on their own (webhook
+    verification rejects, simulator admin rejects), so a production deploy
+    without them simply cannot verify webhooks or use simulator admin.
     """
     cfg = s or settings
     if cfg.ENVIRONMENT.strip().lower() == "production":
@@ -107,9 +123,11 @@ def is_phone_authorized(phone: str, authorized_phones_str: Optional[str] = None)
     # Use database / runtime value if available
     auth_source = authorized_phones_str if (authorized_phones_str is not None and authorized_phones_str.strip() != "") else settings.AUTHORIZED_STAFF_PHONES
 
-    # Explicit full wildcard support if configured
+    # No wildcard support: a configured value of "*", "all", or similar used
+    # to authorize every sender, so a single misconfiguration removed all
+    # staff authorization. Such a value now matches no one.
     if auth_source.strip() in ["*", "all", "الكل"]:
-        return True
+        return False
 
     # Split by any separator: commas (English & Arabic), semicolons, spaces, newlines, pipes
     items = [item.strip() for item in re.split(r"[,،;؛\s\n\r|/]+", auth_source) if item.strip()]

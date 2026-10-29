@@ -184,8 +184,10 @@ def test_cors_configuration():
         "Origin": "http://localhost:3000",
         "Access-Control-Request-Method": "GET"
     })
-    # Since allow_origins=["*"], allow_credentials should be False or absent in preflight
-    assert res.headers.get("access-control-allow-origin") == "*"
+    # CORS is now explicit-origin only (localhost:3000 is in the default
+    # allow-list), so the preflight must echo that origin, not "*", and
+    # credentials must still be absent.
+    assert res.headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert res.headers.get("access-control-allow-credentials") is None
     print("✅ CORS Configuration Passed!")
 

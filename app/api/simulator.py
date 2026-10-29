@@ -32,7 +32,9 @@ def check_simulator_admin_access(request: Request, x_admin_key: Optional[str] = 
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="⛔ تم تعطيل نقاط نهاية المحاكي الإدارية في بيئة الإنتاج."
             )
-        if not x_admin_key or not hmac.compare_digest(x_admin_key, settings.ADMIN_SECRET_KEY):
+        # No admin secret configured means no key can ever match: reject
+        # instead of crashing inside compare_digest on a None secret.
+        if not settings.ADMIN_SECRET_KEY or not x_admin_key or not hmac.compare_digest(x_admin_key, settings.ADMIN_SECRET_KEY):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="⛔ غير مصرح: مفتاح الإدارة السري (X-Admin-Key) مفقود أو غير صحيح."
@@ -44,7 +46,7 @@ def check_simulator_admin_access(request: Request, x_admin_key: Optional[str] = 
     is_local = client_host in ("127.0.0.1", "localhost", "::1", "testclient")
 
     if x_admin_key:
-        if not hmac.compare_digest(x_admin_key, settings.ADMIN_SECRET_KEY):
+        if not settings.ADMIN_SECRET_KEY or not hmac.compare_digest(x_admin_key, settings.ADMIN_SECRET_KEY):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="⛔ غير مصرح: مفتاح الإدارة السري (X-Admin-Key) غير صحيح."
@@ -140,6 +142,11 @@ async def send_admin_simulation(req: SimulatorMessageRequest):
 @router.post("/patient-message")
 async def send_patient_simulation(req: SimulatorMessageRequest):
     """Simulates a patient sending a 1:1 inquiry message to the clinic."""
+    if settings.ENVIRONMENT == "production" and not getattr(settings, "ENABLE_PROD_SIMULATOR", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="⛔ تم تعطيل نقاط نهاية المحاكي في بيئة الإنتاج."
+        )
     reply = await asyncio.to_thread(
         patient_service.handle_patient_query,
         req.sender,
@@ -152,7 +159,7 @@ async def send_patient_simulation(req: SimulatorMessageRequest):
     }
 
 
-@router.get("/state")
+@router.get("/state", dependencies=[Depends(check_simulator_admin_access)])
 async def get_system_state():
     """Returns the full real-time database state for doctors, services, configs, and audit logs."""
     doctors = db.get_all_doctors()

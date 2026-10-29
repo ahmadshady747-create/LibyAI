@@ -69,13 +69,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware (allow_credentials=False required when allow_origins=["*"])
+# CORS: explicit origins only, credentials never allowed, and only the
+# methods/headers this app actually uses. Previously every origin, method,
+# and header was allowed, which exposed the simulator state and admin
+# endpoints to any website a staff member happened to visit.
+_cors_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Key", "X-Hub-Signature-256", "Accept"],
 )
 
 # Include Routers

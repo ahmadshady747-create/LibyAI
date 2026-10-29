@@ -10,6 +10,8 @@ Central message coordinator:
 """
 
 import asyncio
+import hashlib
+import hmac
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, Response, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -91,7 +93,12 @@ async def verify_webhook(
 ):
     """WhatsApp Cloud API webhook verification handshake."""
     verify_token = db.get_clinic_info().get("whatsapp_verify_token") or settings.WHATSAPP_VERIFY_TOKEN
-    if hub_mode == "subscribe" and hub_verify_token == verify_token:
+    if (
+        hub_mode == "subscribe"
+        and hub_verify_token
+        and verify_token
+        and hmac.compare_digest(hub_verify_token, verify_token)
+    ):
         return Response(content=hub_challenge or "", media_type="text/plain")
     raise HTTPException(status_code=403, detail="Invalid verification token")
 
@@ -101,10 +108,34 @@ async def receive_webhook(request: Request):
     """
     Parses incoming webhook events from Meta Cloud API or direct simulator payloads.
     """
+    raw_body = await request.body()
     try:
-        body = await request.json()
+        import json as _json
+
+        body = _json.loads(raw_body) if raw_body else {}
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    # Production gate: this endpoint previously accepted both Meta payloads
+    # and direct sender/message payloads with no signature at all, so anyone
+    # could claim an authorized staff phone number and update clinic data.
+    # In production every payload must carry a valid Meta HMAC signature,
+    # exactly like the signed /webhook/whatsapp endpoint. Development keeps
+    # the unsigned local path for simulator and gateway testing.
+    if settings.ENVIRONMENT.strip().lower() == "production":
+        signature_header = request.headers.get("X-Hub-Signature-256")
+        app_secret = settings.WHATSAPP_APP_SECRET
+        if not signature_header:
+            raise HTTPException(status_code=401, detail="Missing X-Hub-Signature-256 signature header.")
+        if not app_secret:
+            raise HTTPException(status_code=403, detail="Server-side Meta App Secret is not configured.")
+        if not signature_header.startswith("sha256="):
+            raise HTTPException(status_code=403, detail="Invalid webhook signature.")
+        expected = "sha256=" + hmac.new(
+            key=app_secret.encode("utf-8"), msg=raw_body, digestmod=hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature_header, expected):
+            raise HTTPException(status_code=403, detail="Invalid webhook signature.")
 
     # Direct simplified JSON payload (e.g. from local simulator or gateway)
     if "sender" in body and "message" in body:
