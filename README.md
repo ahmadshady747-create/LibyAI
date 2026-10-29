@@ -32,7 +32,6 @@
 ## 🏗️ هيكلية المشروع (Project Architecture)
 
 ```
-c:\Users\awsat\LibyAI\
 ├── app/
 │   ├── api/
 │   │   ├── webhook.py          # مستقبل ويب هوك واتساب الرسمي (Meta Cloud API / Gateway)
@@ -54,25 +53,36 @@ c:\Users\awsat\LibyAI\
 │   │   └── app.js              # التفاعل اللحظي ومزامنة البيانات
 │   ├── config.py               # إعدادات النظام والمفاتيح
 │   └── main.py                 # تطبيق FastAPI الرئيسي
-├── run.py                      # سكريبت تشغيل السيرفر
+├── run.py                      # نقطة تشغيل التطوير المحلي (يختار وضع التطوير ويربط على الجهاز المحلي)
+├── requirements.txt            # تبعيات المشروع المثبتة إصداراتها
+├── pytest.ini                  # إعدادات pytest
+├── conftest.py                 # بيئة الاختبارات (وضع تطوير + أسرار اختبار فقط)
+├── scripts/                    # أدوات فحص Gemini (ليست اختبارات)
+├── scratch/                    # اختبارات مرحلية إضافية
 ├── test_system.py              # اختبارات التكامل لجميع السيناريوهات
-├── .env.example                # نموذج متغيرات البيئة
-└── clinic.db                   # قاعدة بيانات SQLite
+├── Dockerfile                  # صورة الإنتاج (البيئة الافتراضية فيها هي الإنتاج)
+├── .github/workflows/ci.yml    # تشغيل آلي: تجميع + كل الاختبارات
+├── SECURITY.md                 # قواعد أمان الإنتاج (اقرأه قبل أي نشر)
+└── .env.example                # نموذج متغيرات البيئة (أماكن محجوزة فقط، بلا قيم حقيقية)
 ```
+
+ملاحظة: ملف `clinic.db` لا يُشحن مع المستودع، بل يُنشأ وقت التشغيل ويُبذر تلقائيًا، وهو مستثنى من Git.
 
 ---
 
 ## 🚀 طريقة التشغيل السريع
 
-### 1. تشغيل السيرفر والمحاكي التفاعلي:
-من منفذ الأوامر (PowerShell / Terminal):
-```powershell
+### 1. تثبيت التبعيات ثم تشغيل السيرفر والمحاكي التفاعلي:
+من منفذ الأوامر:
+```bash
+pip install -r requirements.txt
 python run.py
 ```
+`run.py` مخصص للتطوير المحلي فقط: يختار وضع التطوير ويربط على الجهاز المحلي.
 
 ### 2. فتح المحاكي في المتصفح:
 افتح الرابط التالي في المتصفح:
-👉 **`http://localhost:8000`**
+👉 **`http://127.0.0.1:8000`**
 
 ستظهر لك شاشة متكاملة تضم:
 1. **العمود الأيمن:** قروب واتساب الإدارة (جرب الضغط على أزرار التحديث السريعة أو اكتب بنفسك `@Bot دكتور العظام علي اعتذر اليوم...`).
@@ -81,9 +91,10 @@ python run.py
 
 ### 3. تشغيل الاختبارات الآلية:
 للتحقق من سلامة كافة المسارات والضوابط الطبية:
-```powershell
-python -u test_system.py
+```bash
+python -m pytest -q test_system.py test_system_integrity.py test_generic_multi_facility.py test_real_flow.py scratch/
 ```
+الملفان `test_system.py` و`test_system_integrity.py` يعملان أيضًا كسكربتات مستقلة، لكن الأمر أعلاه هو الطريقة المعتمدة، وهي نفسها التي يشغّلها التشغيل الآلي عند كل دفع.
 
 ---
 
@@ -91,12 +102,12 @@ python -u test_system.py
 
 النظام مزود بنظامين متكاملين:
 1. **نظام ذكي محلي (Rule-based & Regex):** يعمل بدون إنترنت وبدون أي مفاتيح API بكفاءة عالية.
-2. **محرك Gemini 2.5 Flash:** لفهم أدق التفاصيل واللهجات الصوتية والنصية واستخراج البيانات بـ Structured Outputs.
+2. **محرك Gemini (الافتراضي الحالي: gemini-3.1-flash-lite):** لفهم أدق التفاصيل واللهجات الصوتية والنصية واستخراج البيانات بـ Structured Outputs.
 
 لتفعيل Gemini:
 1. قم بإنشاء ملف `.env` عبر نسخ `.env.example`:
-```powershell
-Copy-Item .env.example .env
+```bash
+cp .env.example .env
 ```
 2. ضع مفتاحك داخل ملف `.env`:
 ```ini
@@ -107,19 +118,27 @@ GEMINI_API_KEY=AIzaSy...
 
 ## 📱 الربط مع واتساب في بيئة الإنتاج (Production)
 
-### الخيار 1: عبر Evolution API أو Baileys (الموصى به لدعم القروبات بدون تكاليف Meta)
+قبل أي نشر، اقرأ `SECURITY.md` كاملًا. الخلاصة: البيئة الافتراضية هي الإنتاج وتفشل مغلقة بلا سر تطبيق مهيأ، والأسرار بلا قيم افتراضية، والمحاكي معطل في الإنتاج ما لم يُفعّل صراحة بمفتاح إدارة صحيح، وCORS بقائمة مصادر صريحة فقط. المستودع يجب أن يبقى خاصًا حتى تُدقق بيانات البذر.
+
+### الخيار 1: عبر Evolution API أو Baileys (غير رسمي — تنبيه مهم)
+هذا المسار يستخدم واتساب بغير القناة الرسمية، وهو معرض لحظر رقم المصحة من Meta. لا يُعتمد عليه لرقم إنتاج حقيقي إلا بعد قبول هذا الخطر صراحة.
 1. تشغيل حاوية Docker لـ Evolution API.
 2. مسح رمز الاستجابة السريعة (QR Code) لرقم هاتف المصحة.
 3. ضبط الـ Webhook ليشير إلى:
    `https://your-domain.com/webhook/whatsapp`
 
-### الخيار 2: عبر Meta WhatsApp Cloud API (الرسمي)
+### الخيار 2: عبر Meta WhatsApp Cloud API (الرسمي — الموصى به للإنتاج)
 1. إنشاء تطبيق Business في Meta for Developers وتفعيل منتج WhatsApp.
 2. ضبط الـ Callback URL في لوحة Meta:
    * URL: `https://your-domain.com/webhook/whatsapp`
-   * Verify Token: `LIBYAI_CLINIC_VERIFY_TOKEN_2026`
+   * Verify Token: رمز قوي من اختيارك أنت، تضعه في `.env` (لا يوجد رمز افتراضي صالح)
 3. إضافة المتغيرات في `.env`:
    ```ini
    WHATSAPP_TOKEN=EAAG...
    WHATSAPP_PHONE_NUMBER_ID=1029384756...
+   WHATSAPP_APP_SECRET=your_strong_meta_app_secret_here
+   WHATSAPP_VERIFY_TOKEN=your_strong_verify_token_here
+   ADMIN_SECRET_KEY=your_strong_admin_key_here
+   ENVIRONMENT=production
    ```
+   واعرض التطبيق خلف وكيل عكسي مع `LIBYAI_HOST` مهيأً صراحة؛ لا تعرّض `uvicorn` مباشرة للإنترنت.

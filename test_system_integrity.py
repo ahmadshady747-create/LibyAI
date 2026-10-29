@@ -12,7 +12,7 @@ if sys.platform == "win32":
         pass
 import time
 from triage import evaluate_triage, TriageLevel
-from db import get_clinic_info, get_all_doctors, update_doctor_atomic, find_doctor_fuzzy
+from db import get_clinic_info, get_all_doctors, update_doctor_atomic, find_doctor_fuzzy, update_clinic_info_key
 from patient_service import handle_patient_query
 from admin_service import handle_admin_group_message
 from debouncer import patient_debouncer
@@ -177,17 +177,29 @@ async def test_http_api_endpoints():
         print(f"  [PASS] /api/simulator/admin-message OK -> reply received")
 
         # POST /api/simulator/clinic-settings (Save settings)
+        # Snapshot first, and restore afterwards: this test shares the
+        # working clinic.db with the scratch suite, and a leftover
+        # "authorized_phones" value here used to break the scratch test
+        # that asserts no keyword like "admin" is stored as a phone.
+        _clinic_before = get_clinic_info()
+        _settings_keys = [
+            "clinic_name", "emergency_phone", "reception_phone",
+            "address", "booking_policy", "authorized_phones",
+        ]
         r_set = client.post("/api/simulator/clinic-settings", json={
             "clinic_name": "مصحة الشفاء التخصصية - فرع طرابلس",
             "emergency_phone": "091-2223344",
             "reception_phone": "092-1111111",
             "address": "طرابلس",
             "booking_policy": "الحجز بالحضور الشخصي فقط",
-            "authorized_phones": "0915556677, 0928889900, admin"
+            "authorized_phones": "0915556677, 0928889900"
         })
         assert r_set.status_code == 200
         assert r_set.json().get("status") == "success"
         print(f"  [PASS] /api/simulator/clinic-settings saved successfully")
+        for _k in _settings_keys:
+            if _k in _clinic_before:
+                update_clinic_info_key(_k, _clinic_before[_k])
 
 
 async def main():

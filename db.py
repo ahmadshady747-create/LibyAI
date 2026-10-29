@@ -711,11 +711,18 @@ def apply_admin_mutation_atomic(
     job_id: Optional[int] = None,
     lease_token: Optional[str] = None,
     worker_id: Optional[str] = None,
-    db_path: str = DB_PATH
+    db_path: str = DB_PATH,
+    daily_override: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Dict[str, Any], Dict[str, Any], str]:
     """
     Executes business mutation, audit-log insertion, and marking the job
     as processing-completed in a SINGLE atomic SQLite transaction.
+
+    If daily_override is given (doctor status changes), its daily_overrides
+    row is written in the SAME transaction. It must not be written by a
+    separate call beforehand: that call committed its own transaction
+    (including a doctors-table update), so a later crash could not roll
+    the status change back.
 
     Returns:
         (already_applied: bool, status_before: dict, status_after: dict, receipt: str)
@@ -786,6 +793,29 @@ def apply_admin_mutation_atomic(
             status_after = dict(cursor.fetchone())
         else:
             raise ValueError(f"Unknown mutation_type: {mutation_type}")
+
+        # 3b. Daily override in the SAME transaction (doctor status only).
+        # The override row must commit or roll back together with the
+        # doctors update above; writing it in a separate transaction first
+        # is what previously broke rollback.
+        if daily_override is not None:
+            cursor.execute("""
+                DELETE FROM daily_overrides
+                WHERE override_date = ? AND doctor_name = ?;
+            """, (daily_override["override_date"], daily_override["doctor_name"]))
+            cursor.execute("""
+                INSERT INTO daily_overrides (
+                    override_date, day_of_week, doctor_name, clinic_type, status, note, updated_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?);
+            """, (
+                daily_override["override_date"],
+                daily_override.get("day_of_week", ""),
+                daily_override["doctor_name"],
+                daily_override.get("clinic_type", "both"),
+                daily_override["status"],
+                daily_override.get("note", ""),
+                daily_override.get("updated_by", ""),
+            ))
 
         # 4. Insert Audit Log (with unique message_job_id)
         cursor.execute("""

@@ -468,14 +468,26 @@ def handle_admin_group_message(
         new_status = ALLOWED_STATUSES.get(raw_status, "available")
         daily_note = (intent.daily_note or "").strip()
 
-        # 5. Record in daily_overrides for real-time schedule overrides
-        override_row = db.add_daily_override(
-            doctor_name=doctor["name"],
-            status=new_status,
-            note=daily_note,
-            updated_by=sender_phone,
-            db_path=db_path
-        )
+        # 5. Prepare the daily override, but do NOT write it yet. It used
+        # to be written by a separate call that committed its own
+        # transaction (including a doctors-table update) before the atomic
+        # mutation ran, so a crash inside the atomic mutation left the
+        # status changed anyway and "rollback" was a lie. The override is
+        # now written inside apply_admin_mutation_atomic, in the same
+        # transaction as the doctors update, the audit log, and the job
+        # completion, so all four commit together or none do.
+        from app.services.time_utils import get_libya_now, ARABIC_DAYS
+
+        _now = get_libya_now()
+        override_row = {
+            "override_date": _now.strftime("%Y-%m-%d"),
+            "day_of_week": ARABIC_DAYS.get(_now.weekday(), "اليوم"),
+            "doctor_name": doctor["name"],
+            "clinic_type": "both",
+            "status": new_status,
+            "note": daily_note,
+            "updated_by": sender_phone,
+        }
 
         # Atomic SQLite mutation in doctors + audit-log + job completion
         before_label = STATUS_ARABIC_MAP.get(doctor["status"], doctor["status"])
@@ -503,7 +515,8 @@ def handle_admin_group_message(
             job_id=job_id,
             lease_token=lease_token,
             worker_id=worker_id,
-            db_path=db_path
+            db_path=db_path,
+            daily_override=override_row,
         )
         return final_receipt
 

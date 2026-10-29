@@ -1,0 +1,30 @@
+name: LibyAI CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile all Python files
+        run: python -m compileall -q app db.py admin_service.py patient_service.py router.py job_queue.py simulator.py run.py
+      - name: Run test suites
+        run: python -m pytest -q test_system.py test_system_integrity.py test_generic_multi_facility.py test_real_flow.py scratch/
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image (no push)
+        run: docker build -t libyai:ci .
