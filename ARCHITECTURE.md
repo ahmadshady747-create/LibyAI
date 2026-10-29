@@ -66,11 +66,14 @@ the current, tested reality — not a wish list.
   adapter keeps the active-only filter), but the scoring lives only in
   `db.py`. `test_layer_authority.py` guards that both layers return the
   same row id for the same query, for doctors and for services.
-- Two doctor/service update paths still exist because their callers
-  expect different return types. Merging those needs a single return
-  type and a migration of every caller, which is a larger round than
-  the finder merge. Until then, change an update path only with the
-  full suite still passing.
+- Update paths are also adapters now (round 6): 
+  `db_service.update_doctor_today_status`, `update_doctor_fee`, and
+  `update_service_price` write through the legacy atomic functions and
+  only convert the result to a SQLModel object. That also fixed the
+  status/today_status sync bug in the old SQLModel status update.
+  What remains unmerged is upsert/delete/wipe (ingest uses the SQLModel
+  upserts; the simulator delete/reset endpoints use raw legacy SQL),
+  plus the `clinic_config` mirror noted above.
 - `clinic_config` (SQLModel) mirrors `clinic_info` (legacy). The
   simulator settings endpoint writes both; `db_service` config reads
   come from `clinic_info`. Do not read config from `clinic_config`

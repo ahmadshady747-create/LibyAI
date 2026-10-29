@@ -48,17 +48,26 @@ def find_doctor_fuzzy(name_query: Optional[str] = None, specialty_query: Optiona
 
 
 def update_doctor_today_status(doctor_id: int, status: str, note: str = "") -> Optional[Doctor]:
+    """
+    Adapter over the legacy atomic doctor update, same pattern as the
+    finders in round 5: the write lives in `db.update_doctor_atomic`,
+    this only converts the result to a SQLModel object.
+
+    This also fixes a sync bug in the old SQLModel version, which
+    updated only today_status/today_note and left status/daily_note
+    stale. Every other writer in the codebase keeps status and
+    today_status (and daily_note and today_note) in sync, and readers
+    use both, so a half-updated row was a divergence waiting to happen.
+    A missing doctor still returns None, as before, instead of raising.
+    """
+    import db
+
+    try:
+        db.update_doctor_atomic(doctor_id, status=status, daily_note=note)
+    except ValueError:
+        return None
     with Session(engine) as session:
-        doc = session.get(Doctor, doctor_id)
-        if not doc:
-            return None
-        doc.today_status = status
-        doc.today_note = note
-        doc.updated_at = datetime.now(timezone.utc)
-        session.add(doc)
-        session.commit()
-        session.refresh(doc)
-        return doc
+        return session.get(Doctor, doctor_id)
 
 
 def upsert_doctor(name: str, specialty: str, regular_schedule: str, consultation_fee: float, room_number: str = "غير محدد", schedule_days: str = "السبت,الأحد,الإثنين,الثلاثاء,الأربعاء,الخميس") -> Doctor:
@@ -150,16 +159,15 @@ def upsert_service(name: str, category: str, price: float, prep_instructions: st
 
 
 def update_doctor_fee(doctor_id: int, new_fee: float) -> Optional[Doctor]:
+    """Adapter over `db.update_doctor_atomic` (fee only, other fields kept)."""
+    import db
+
+    try:
+        db.update_doctor_atomic(doctor_id, consultation_fee=new_fee)
+    except ValueError:
+        return None
     with Session(engine) as session:
-        doc = session.get(Doctor, doctor_id)
-        if not doc:
-            return None
-        doc.consultation_fee = new_fee
-        doc.updated_at = datetime.now(timezone.utc)
-        session.add(doc)
-        session.commit()
-        session.refresh(doc)
-        return doc
+        return session.get(Doctor, doctor_id)
 
 
 def get_all_services(category: Optional[str] = None) -> List[Service]:
@@ -188,16 +196,15 @@ def find_service_fuzzy(service_name: str) -> Optional[Service]:
 
 
 def update_service_price(service_id: int, new_price: float) -> Optional[Service]:
+    """Adapter over `db.update_service_atomic` (price only)."""
+    import db
+
+    try:
+        db.update_service_atomic(service_id, price=new_price)
+    except ValueError:
+        return None
     with Session(engine) as session:
-        svc = session.get(Service, service_id)
-        if not svc:
-            return None
-        svc.price = new_price
-        svc.updated_at = datetime.now(timezone.utc)
-        session.add(svc)
-        session.commit()
-        session.refresh(svc)
-        return svc
+        return session.get(Service, service_id)
 
 
 def get_clinic_configs() -> Dict[str, str]:

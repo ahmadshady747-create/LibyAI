@@ -72,6 +72,66 @@ def test_both_fuzzy_finders_agree_on_a_doctor_name():
     )
 
 
+def test_sqlmodel_updates_go_through_the_legacy_atomic_path():
+    """Update adapters must write through the legacy atomic path.
+
+    In particular, a status update must keep status and today_status
+    in sync (the old SQLModel version updated only today_status), and
+    the same change must be visible to a legacy reader of the same row.
+    Fee and service-price updates are checked the same way.
+    """
+    import db
+    from sqlmodel import Session, select
+    from app.database.models import Doctor, Service
+    from app.database.session import engine
+    from app.services import db_service
+
+    with Session(engine) as session:
+        for old in session.exec(
+            select(Doctor).where(Doctor.name.contains("اختبار تحديث التوحيد"))
+        ).all():
+            session.delete(old)
+        for old in session.exec(
+            select(Service).where(Service.name.contains("توحيدتحديث"))
+        ).all():
+            session.delete(old)
+        doc = Doctor(
+            name="د. اختبار تحديث التوحيد",
+            specialty="تخصص اختبار فريد",
+            regular_schedule="يومياً",
+            consultation_fee=40.0,
+            is_active=True,
+        )
+        svc = Service(
+            name="فحص توحيدتحديث",
+            category="مختبر اختبار فريد",
+            price=20.0,
+        )
+        session.add(doc)
+        session.add(svc)
+        session.commit()
+        doc_id, svc_id = doc.id, svc.id
+
+    updated = db_service.update_doctor_today_status(doc_id, status="left", note="غادر")
+    assert updated is not None
+    assert updated.today_status == "left"
+    assert updated.status == "left", "status and today_status must stay in sync"
+    legacy_doc = next(d for d in db.get_all_doctors() if d["id"] == doc_id)
+    assert legacy_doc["today_status"] == "left"
+    assert legacy_doc["status"] == "left"
+
+    updated_fee = db_service.update_doctor_fee(doc_id, 55.0)
+    assert updated_fee is not None and updated_fee.consultation_fee == 55.0
+
+    updated_svc = db_service.update_service_price(svc_id, 33.0)
+    assert updated_svc is not None and updated_svc.price == 33.0
+    legacy_svc = next(s for s in db.get_all_services() if s["id"] == svc_id)
+    assert legacy_svc["price"] == 33.0
+
+    assert db_service.update_doctor_today_status(999999999, status="left") is None
+    assert db_service.update_service_price(999999999, 10.0) is None
+
+
 def test_both_service_finders_agree_on_a_service():
     """Same adapter guarantee for services, by row id."""
     import db
