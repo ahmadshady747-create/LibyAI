@@ -35,16 +35,12 @@ def test_no_dead_code_after_delegation_returns():
 
 
 def test_both_fuzzy_finders_agree_on_a_doctor_name():
-    """Legacy and SQLModel finders must agree on the same doctor name.
+    """Legacy and SQLModel finders must return the SAME doctor row.
 
-    They return different types (dict vs SQLModel object) and use
-    different scoring, so this checks the name, not the row id. The test
+    Since round 5 the SQLModel finder is an adapter over the legacy
+    finder, so agreement is by row id, not just by name. The test
     inserts its own uniquely named, active doctor first, so it does not
     depend on which seeded doctors happen to be active in the shared DB.
-    Before round 4, the SQLModel finder returned the first doctor sharing
-    ANY keyword, so a distinctive name could return an unrelated doctor
-    who merely shares a first name; its scoring now mirrors the legacy
-    finder, and this test is the regression guard for that fix.
     """
     import db
     from sqlmodel import Session, select
@@ -71,5 +67,36 @@ def test_both_fuzzy_finders_agree_on_a_doctor_name():
     modern = db_service.find_doctor_fuzzy(name_query=query, specialty_query=query)
     assert legacy is not None, "Legacy finder found no doctor for the query"
     assert modern is not None, "SQLModel finder found no doctor for the query"
-    assert query in legacy["name"], f"Legacy finder returned wrong doctor: {legacy['name']}"
-    assert query in modern.name, f"SQLModel finder returned wrong doctor: {modern.name}"
+    assert legacy["id"] == modern.id, (
+        f"Finders diverged: legacy row {legacy['id']}, SQLModel row {modern.id}"
+    )
+
+
+def test_both_service_finders_agree_on_a_service():
+    """Same adapter guarantee for services, by row id."""
+    import db
+    from sqlmodel import Session, select
+    from app.database.models import Service
+    from app.database.session import engine
+    from app.services import db_service
+
+    query = "توحيدفريد"
+    with Session(engine) as session:
+        for old in session.exec(
+            select(Service).where(Service.name.contains(query))
+        ).all():
+            session.delete(old)
+        session.add(Service(
+            name=f"فحص {query}",
+            category="مختبر اختبار فريد",
+            price=30.0,
+        ))
+        session.commit()
+
+    legacy = db.find_service_fuzzy(query)
+    modern = db_service.find_service_fuzzy(query)
+    assert legacy is not None, "Legacy service finder found no service"
+    assert modern is not None, "SQLModel service finder found no service"
+    assert legacy["id"] == modern.id, (
+        f"Service finders diverged: legacy row {legacy['id']}, SQLModel row {modern.id}"
+    )

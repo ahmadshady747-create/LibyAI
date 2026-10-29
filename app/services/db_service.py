@@ -22,53 +22,29 @@ def get_doctors_by_specialty(specialty: str) -> List[Doctor]:
         return list(session.exec(statement).all())
 
 
-from app.services.arabic_utils import is_fuzzy_match, get_arabic_keywords
-
 def find_doctor_fuzzy(name_query: Optional[str] = None, specialty_query: Optional[str] = None) -> Optional[Doctor]:
     """
-    Score-based fuzzy doctor search, mirroring the legacy db.py finder.
+    Adapter over the legacy finder: scoring lives in exactly one place
+    (`db.find_doctor_fuzzy`), and this function only converts its result
+    to a SQLModel object so existing callers keep their return type.
 
-    The previous implementation returned the FIRST doctor sharing ANY
-    keyword with the query (a single shared token scored the same as a
-    full-name match), so a distinctive name query could return an
-    unrelated doctor who merely shares a first name. Scoring now prefers
-    exact matches, then doctors matching more query tokens, and requires
-    a minimum score, like the legacy finder.
+    Previously this function had its own scoring, which diverged from
+    the legacy finder (at one point it returned the first doctor sharing
+    ANY keyword). Keeping two scorings in sync by hand failed, so there
+    is now one. The active-only filter of the old SQLModel version is
+    preserved: an inactive doctor found by the legacy finder is not
+    returned here.
     """
-    from app.services.arabic_utils import get_arabic_keywords
+    import db
 
-    with Session(engine) as session:
-        doctors = list(session.exec(select(Doctor).where(Doctor.is_active == True)).all())
-        query = f"{name_query or ''} {specialty_query or ''}".strip().lower()
-        if not query:
-            return None
-        query_tokens = get_arabic_keywords(query)
-
-        best_doc = None
-        best_score = 0
-
-        for doc in doctors:
-            name_lower = (doc.name or "").lower()
-            spec_lower = (doc.specialty or "").lower()
-            score = 0
-            if query in name_lower or name_lower in query:
-                score += 10
-            if query in spec_lower or spec_lower in query:
-                score += 8
-            name_keys = get_arabic_keywords(doc.name or "")
-            spec_keys = get_arabic_keywords(doc.specialty or "")
-            for tok in query_tokens:
-                if tok in name_keys:
-                    score += 5
-                if tok in spec_keys:
-                    score += 4
-            if score > best_score:
-                best_score = score
-                best_doc = doc
-
-        if best_score >= 4:
-            return best_doc
+    found = db.find_doctor_fuzzy(name_query=name_query, specialty_query=specialty_query)
+    if not found:
         return None
+    with Session(engine) as session:
+        doc = session.get(Doctor, found["id"])
+        if doc is None or not doc.is_active:
+            return None
+        return doc
 
 
 def update_doctor_today_status(doctor_id: int, status: str, note: str = "") -> Optional[Doctor]:
@@ -195,12 +171,20 @@ def get_all_services(category: Optional[str] = None) -> List[Service]:
 
 
 def find_service_fuzzy(service_name: str) -> Optional[Service]:
-    with Session(engine) as session:
-        services = list(session.exec(select(Service)).all())
-        for s in services:
-            if is_fuzzy_match(s.name, service_name) or is_fuzzy_match(s.category, service_name):
-                return s
+    """
+    Adapter over the legacy finder, same pattern as find_doctor_fuzzy:
+    scoring lives in `db.find_service_fuzzy`; this only converts the
+    result to a SQLModel object. Previously this had its own
+    first-match-any-keyword logic, which could return a different
+    service than the legacy finder for the same query.
+    """
+    import db
+
+    found = db.find_service_fuzzy(service_name)
+    if not found:
         return None
+    with Session(engine) as session:
+        return session.get(Service, found["id"])
 
 
 def update_service_price(service_id: int, new_price: float) -> Optional[Service]:

@@ -59,17 +59,18 @@ the current, tested reality — not a wish list.
 
 ## Known duplication that remains (deliberately, for now)
 
-- Two fuzzy finders (`db.find_doctor_fuzzy` returning dicts,
-  `db_service.find_doctor_fuzzy` returning SQLModel objects) and two
-  doctor/service update paths exist because their callers expect
-  different return types. Merging them needs a single return type and a
-  migration of every caller, which is a larger round than a cleanup.
-  Round 4 did align their scoring: the SQLModel finder used to return
-  the first doctor sharing ANY keyword, so a distinctive name could
-  return an unrelated doctor sharing a first name. It now scores exact
-  matches and token counts like the legacy finder, and
-  `test_layer_authority.py` guards that agreement on a uniquely named
-  doctor. Change one finder only with that test still passing.
+- Two fuzzy finders used to exist with separate scoring. Round 5 merged
+  them into one: `db_service.find_doctor_fuzzy` and
+  `db_service.find_service_fuzzy` are now thin adapters over the legacy
+  finders — they keep their SQLModel return types (and the doctor
+  adapter keeps the active-only filter), but the scoring lives only in
+  `db.py`. `test_layer_authority.py` guards that both layers return the
+  same row id for the same query, for doctors and for services.
+- Two doctor/service update paths still exist because their callers
+  expect different return types. Merging those needs a single return
+  type and a migration of every caller, which is a larger round than
+  the finder merge. Until then, change an update path only with the
+  full suite still passing.
 - `clinic_config` (SQLModel) mirrors `clinic_info` (legacy). The
   simulator settings endpoint writes both; `db_service` config reads
   come from `clinic_info`. Do not read config from `clinic_config`
