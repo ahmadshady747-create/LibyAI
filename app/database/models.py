@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import text
 from sqlmodel import SQLModel, Field
@@ -30,7 +30,7 @@ class Doctor(SQLModel, table=True):
     today_note: Optional[str] = Field(default="")
     consultation_fee: float = Field(default=40.0, sa_column_kwargs={"server_default": text("40.0")})
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": text("1")})
-    updated_at: datetime = Field(default_factory=datetime.utcnow, sa_column_kwargs={"server_default": text("CURRENT_TIMESTAMP")})
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column_kwargs={"server_default": text("CURRENT_TIMESTAMP")})
 
 
 class Service(SQLModel, table=True):
@@ -43,7 +43,7 @@ class Service(SQLModel, table=True):
     instructions: Optional[str] = Field(default="")
     prep_instructions: Optional[str] = Field(default="")
     availability: str = Field(default="متاح خلال ساعات العمل الرسمية", sa_column_kwargs={"server_default": text("'متاح خلال ساعات العمل الرسمية'")})
-    updated_at: datetime = Field(default_factory=datetime.utcnow, sa_column_kwargs={"server_default": text("CURRENT_TIMESTAMP")})
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column_kwargs={"server_default": text("CURRENT_TIMESTAMP")})
 
 
 class ClinicConfig(SQLModel, table=True):
@@ -64,4 +64,4 @@ class AuditLog(SQLModel, table=True):
     action_type: str
     extracted_data: str
     confirmation_sent: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

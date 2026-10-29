@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from sqlmodel import Session, select
 from app.database.models import Doctor, Service, ClinicConfig, AuditLog
@@ -25,24 +25,48 @@ def get_doctors_by_specialty(specialty: str) -> List[Doctor]:
 from app.services.arabic_utils import is_fuzzy_match, get_arabic_keywords
 
 def find_doctor_fuzzy(name_query: Optional[str] = None, specialty_query: Optional[str] = None) -> Optional[Doctor]:
+    """
+    Score-based fuzzy doctor search, mirroring the legacy db.py finder.
+
+    The previous implementation returned the FIRST doctor sharing ANY
+    keyword with the query (a single shared token scored the same as a
+    full-name match), so a distinctive name query could return an
+    unrelated doctor who merely shares a first name. Scoring now prefers
+    exact matches, then doctors matching more query tokens, and requires
+    a minimum score, like the legacy finder.
+    """
+    from app.services.arabic_utils import get_arabic_keywords
+
     with Session(engine) as session:
         doctors = list(session.exec(select(Doctor).where(Doctor.is_active == True)).all())
-        query = f"{name_query or ''} {specialty_query or ''}"
-        
+        query = f"{name_query or ''} {specialty_query or ''}".strip().lower()
+        if not query:
+            return None
+        query_tokens = get_arabic_keywords(query)
+
         best_doc = None
         best_score = 0
-        
+
         for doc in doctors:
+            name_lower = (doc.name or "").lower()
+            spec_lower = (doc.specialty or "").lower()
             score = 0
-            if is_fuzzy_match(doc.name, query):
-                score += 2
-            if is_fuzzy_match(doc.specialty, query):
-                score += 1
+            if query in name_lower or name_lower in query:
+                score += 10
+            if query in spec_lower or spec_lower in query:
+                score += 8
+            name_keys = get_arabic_keywords(doc.name or "")
+            spec_keys = get_arabic_keywords(doc.specialty or "")
+            for tok in query_tokens:
+                if tok in name_keys:
+                    score += 5
+                if tok in spec_keys:
+                    score += 4
             if score > best_score:
                 best_score = score
                 best_doc = doc
-                
-        if best_score > 0:
+
+        if best_score >= 4:
             return best_doc
         return None
 
@@ -54,7 +78,7 @@ def update_doctor_today_status(doctor_id: int, status: str, note: str = "") -> O
             return None
         doc.today_status = status
         doc.today_note = note
-        doc.updated_at = datetime.utcnow()
+        doc.updated_at = datetime.now(timezone.utc)
         session.add(doc)
         session.commit()
         session.refresh(doc)
@@ -85,7 +109,7 @@ def upsert_doctor(name: str, specialty: str, regular_schedule: str, consultation
                 doc.consultation_fee = consultation_fee
             if room_number and room_number != "غير محدد":
                 doc.room_number = room_number
-            doc.updated_at = datetime.utcnow()
+            doc.updated_at = datetime.now(timezone.utc)
             session.add(doc)
             session.commit()
             session.refresh(doc)
@@ -99,7 +123,7 @@ def upsert_doctor(name: str, specialty: str, regular_schedule: str, consultation
                 room_number=room_number or "غير محدد",
                 schedule_days=schedule_days,
                 today_status="available",
-                updated_at=datetime.utcnow()
+                updated_at=datetime.now(timezone.utc)
             )
             session.add(new_doc)
             session.commit()
@@ -128,7 +152,7 @@ def upsert_service(name: str, category: str, price: float, prep_instructions: st
                 svc.instructions = prep_instructions
             if availability:
                 svc.availability = availability
-            svc.updated_at = datetime.utcnow()
+            svc.updated_at = datetime.now(timezone.utc)
             session.add(svc)
             session.commit()
             session.refresh(svc)
@@ -141,7 +165,7 @@ def upsert_service(name: str, category: str, price: float, prep_instructions: st
                 instructions=prep_instructions,
                 prep_instructions=prep_instructions,
                 availability=availability or "متاح",
-                updated_at=datetime.utcnow()
+                updated_at=datetime.now(timezone.utc)
             )
             session.add(new_svc)
             session.commit()
@@ -155,7 +179,7 @@ def update_doctor_fee(doctor_id: int, new_fee: float) -> Optional[Doctor]:
         if not doc:
             return None
         doc.consultation_fee = new_fee
-        doc.updated_at = datetime.utcnow()
+        doc.updated_at = datetime.now(timezone.utc)
         session.add(doc)
         session.commit()
         session.refresh(doc)
@@ -185,7 +209,7 @@ def update_service_price(service_id: int, new_price: float) -> Optional[Service]
         if not svc:
             return None
         svc.price = new_price
-        svc.updated_at = datetime.utcnow()
+        svc.updated_at = datetime.now(timezone.utc)
         session.add(svc)
         session.commit()
         session.refresh(svc)
@@ -219,7 +243,7 @@ def log_audit(sender: str, raw_message: str, action_type: str, extracted_data: s
             action_type=action_type,
             extracted_data=extracted_data,
             confirmation_sent=confirmation_sent,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         session.add(log)
         session.commit()

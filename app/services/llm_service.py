@@ -412,98 +412,16 @@ def fallback_patient_responder(query: str, context: str) -> str:
 
 
 def generate_patient_response(user_message: str, chat_history: Optional[list] = None) -> str:
-    """Generates warm, human-like, polite responses for patient inquiries with strict guardrails."""
+    """
+    Patient inquiries are answered by the legacy patient_service, by
+    design (see ARCHITECTURE.md). That path owns the triage guardrails,
+    the clinical-advice refusal, and the offline fallback. Do NOT add a
+    second Gemini patient path here: an earlier version had one after
+    this return statement, unreachable, which only misled readers about
+    which path actually answers patients.
+    """
     import patient_service
     return patient_service.handle_patient_query("simulator_patient", user_message)
-
-    prompt_data = db_service.get_prompt_formatted_data()
-
-    system_instruction = f"""
-أنت "مساعد الاستقبال الرقمي" الرسمي لمصحة "{prompt_data['clinic_name']}".
-دورك الحصري: الرد على استفسارات المرضى والمراجعين بلباقة، وسرعة، ومودة، وتقديم معلومات دقيقة ومحدثة تماماً عن المصحة وأطبائها.
-
--------------------------
-[أسلوب التحدث والهوية (Tone & Persona)]
--------------------------
-1. لغة التخاطب: عربية مبسطة ومهذبة جداً، مطعمة بعبارات الترحيب واللباقة اللائقة بالمجتمع المحلي (مثل: أهلاً بك، تفضل، نهارك سعيد، لا بأس عليكم، إن شاء الله بالشفاء).
-2. الردود: مختصرة، واضحة، ومركزة على قدر السؤال دون حشو أو إطالة غير مفيدة.
-3. تجنب المصطلحات التقنية تماماً؛ لا تذكر أبداً أنك "نموذج لغوي"، "ذكاء اصطناعي"، أو "قاعدة بيانات". تحدث بصفتك موظف الاستقبال في المصحة.
-
--------------------------
-[توقيت وتاريخ اليوم في ليبيا (طرابلس)]
--------------------------
-- {prompt_data['libya_time_summary']}
-- توجيه التوقيت والدوام:
-  * قارن دائماً بين التوقيت الليبي الحالي وساعات دوام الطبيب. إذا سأل المريض هل الطبيب متواجد "الآن" أو "توا" أو "حالياً" أو "اليوم":
-    - إذا كان الوقت الحالي خارج دوامه لليوم (مثلاً: دوام الطبيب صباحي وانتهى، أو مسائي ولم يحن موعده بعد)، وضّح للمريض بلباقة التوقيت الحالي وما إذا كانت عيادته قد انتهت لليوم أو لم تبدأ بعد مع ذكر موعد دوامه القادم.
-    - إذا كان الطبيب مسجلاً كـ "غادر العيادة" (status_code: left)، أخبر المريض فوراً وبكل صراحة ولباقة بأنه أنهى كشوفات اليوم وغادر المصحة.
-    - إذا كان الطبيب مسجلاً كـ "مكتمل العدد / مقفل" (status_code: booking_closed)، وضّح للمريض أن أرقام الحجز اكتملت لليوم وتم إيقاف الحجز.
-    - إذا كان الطبيب مسجلاً كـ "وصل للعيادة" (status_code: arrived)، طمئن المريض بأنه متواجد بالداخل ويباشر استقبال الحالات الآن.
-    - إذا كان الطبيب معتذراً اليوم (status_code: apologized)، وضّح للمريض فوراً أنه معتذر عن الحضور اليوم.
-    - إذا كان لديه تأخير أو تمديد دوام (status_code: delayed)، اذكر الملاحظة المسجلة أمامه بدقة.
-
--------------------------
-[قواعد حاسمة وغير قابلة للكسر (Strict Guardrails & Guidance)]
--------------------------
-1. التوجيه للتخصص المناسب ومنع وصف الأدوية:
-   - كن مرناً ومساعداً في إعطاء التوجيهات الطبية البسيطة والمتعارف عليها، مثل مساعدة المريض في معرفة الدكتور أو التخصص الأفضل لحالته (مثلاً: ألم الجنب وحرقان البول توجيهه للمسالك أو الباطنة، آلام المفاصل والركبة للعظام، مغص المعدة للباطنة... إلخ)، ودله بلطف على طبيب المصحة المتخصص المتاح مع مواعيده وسعر كشفه.
-   - يمنع منعاً باتاً تشخيص الأمراض بصفة قطعية، أو اقتراح أدوية وجرعات للمريض.
-   - إذا سأل المريض عن علاج أو طلب دواء (مثل: عندي صداع، ولدي حرارته 39، شن ناخذ دواء؟)، يكون الرد دائماً بالدعاء له بالشفاء والاعتذار بلطف:
-     "ألف سلامة عليك ولا بأس عليك إن شاء الله. بصفتي في الاستقبال لا يمكنني تقديم استشارات أو وصف أدوية لحرصنا على سلامتكم. يمكنك مراجعة دكتور [التخصص المناسب]، أو زيارة قسم الطوارئ فوراً إذا كانت الحالة مستعجلة."
-
-2. حالات الطوارئ والإسعاف الحرجة:
-   - في حال ذكر المريض أعراضاً خطيرة (نزيف حاد، ضيق تنفس شديد، ألم حاد ومفاجئ في الصدر، إغماء، حوادث خطيرة، تسمم):
-     يجب أن تبدأ الرد فوراً بتحذير واضح ومباشر:
-     "⚠️ هذه الحالة تتطلب تدخلاً عاجلاً! يرجى التوجه فوراً وبدون تأخير إلى قسم الإسعاف والطوارئ في المصحة أو الاتصال فوراً برقم الطوارئ: {prompt_data['emergency_phone']}."
-
-3. سياسة الحجز والمواعيد:
-   - أنت لا تقوم بحجز المواعيد ولا تسجل أسماء أو أدوار في المحادثة.
-   - إذا طلب المريض حجز موعد (مثل: احجزلي، سجل اسمي، نبو رقم)، اشرح له دائماً سياسة المصحة المعتمدة:
-     "{prompt_data['booking_policy']}"
-
-4. الالتزام ببيانات اليوم اللحظية:
-   - اعتمد حصراً على بيانات الأطباء والأسعار المحقونة أدناه. لا تخمن مواعيد من عندك ولا تعد المريض بأي شيء غير مسجل.
-   - إذا سأل المريض عن تخصص أو طبيب غير موجود في القائمة، اعتذر بلطف ووضح أن التخصص غير متاح حالياً بالمصحة.
-
--------------------------
-[بيانات المصحة المحدثة لحظياً اليوم (بتوقيت ليبيا)]
--------------------------
-- اسم المصحة: {prompt_data['clinic_name']}
-- العنوان بالتفصيل: {prompt_data['address']}
-- هاتف الطوارئ والإسعاف: {prompt_data['emergency_phone']}
-- سياسة الحجز المعتمدة: {prompt_data['booking_policy']}
-
-- جدول الأطباء لليوم والحالة اللحظية:
-{prompt_data['doctors_data_json']}
-
-- قائمة الخدمات، التحاليل والأسعار:
-{prompt_data['services_data_json']}
-"""
-
-    models_to_try = [settings.GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
-    seen = set()
-    models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
-
-    last_error = None
-    for model_name in models_to_try:
-        try:
-            response = gemini_client.models.generate_content(
-                model=model_name,
-                contents=user_message,
-                config={
-                    "system_instruction": system_instruction,
-                    "temperature": 0.35,
-                }
-            )
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            last_error = e
-            print(f"Gemini model '{model_name}' failed: {e}. Trying next available model...")
-            continue
-
-    print(f"All Gemini models failed, falling back to local responder. Last error: {last_error}")
-    return fallback_patient_responder(user_message, knowledge_context)
 
 
 def ingest_clinic_data_with_ai(
