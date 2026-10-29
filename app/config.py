@@ -1,7 +1,7 @@
 import os
 import re
 from typing import Optional, List
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -36,9 +36,7 @@ class Settings(BaseSettings):
     AUTHORIZED_STAFF_PHONES: str = "0912345678,0921111111,218912345678"
     BOT_TRIGGER_TAG: str = "@Bot"
     
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 def validate_production_security(s: Settings = None) -> None:

@@ -32,10 +32,13 @@ def process_authorized_staff_message(sender_phone: str, message_text: str) -> Op
     Delegates to admin_service for unified, atomic SQLite execution.
     """
     import admin_service
-    tagged_msg = message_text.strip()
-    if not any(tag in tagged_msg.lower() for tag in ["@bot", "@تحديث", "@إدارة", "@ادارة", "@بوت", "@بـوت"]):
-        tagged_msg = f"@تحديث {tagged_msg}"
-    return admin_service.handle_admin_group_message(sender_phone, tagged_msg)
+    # Do NOT auto-tag untagged messages here. In a group, an untagged message
+    # is casual chatter and handle_admin_group_message must return None for
+    # it. Auto-tagging turned every greeting into an update attempt (and, with
+    # the old substring phone check, could even appear authorized). The 1:1
+    # simulator endpoint tags its own messages before calling the handler
+    # directly, so no caller depends on auto-tagging here.
+    return admin_service.handle_admin_group_message(sender_phone, message_text.strip())
 
     # If message is casual chatter (greeting, question about work, etc.), ignore cleanly
     if action == "CASUAL_CHATTER":

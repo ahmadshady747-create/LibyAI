@@ -201,7 +201,7 @@ def build_system_instruction(clinic_info: Dict[str, Any], daily_schedule: Dict[s
 """
 
 
-def fallback_patient_answer(query: str, clinic_info: Dict[str, Any], daily_schedule: Dict[str, Any]) -> str:
+def fallback_patient_answer(query: str, clinic_info: Dict[str, Any], daily_schedule: Dict[str, Any], history=None) -> str:
     """
     Deterministic fallback grounded 100% in SQLite data if LLM is unavailable.
     Completely dynamic for any clinic or facility.
@@ -266,6 +266,30 @@ def fallback_patient_answer(query: str, clinic_info: Dict[str, Any], daily_sched
         res_lines.append(f"📍 *المقر:* {address}\n📞 *الاستقبال:* {phones}")
         return "\n".join(res_lines)
 
+    # 4. Contextual price follow-up: "how much is his examination?" after a
+    # doctor was just discussed. The fallback is stateless by itself, so use
+    # the conversation history passed by handle_patient_query: find the most
+    # recently mentioned doctor and answer with that doctor's real fee from
+    # the doctors table, instead of falling through to a generic welcome.
+    if history and any(k in q for k in ["سعر", "كشف", "كشفية", "قداش", "بكم", "ثمن", "تكلفة"]):
+        try:
+            all_doctors = db.get_all_doctors()
+        except Exception:
+            all_doctors = []
+        for turn in reversed(history):
+            turn_norm = db.norm(turn.get("text", ""))
+            for doc in all_doctors:
+                doc_name = doc.get("name", "")
+                if doc_name and db.norm(doc_name) in turn_norm:
+                    fee = doc.get("consultation_fee")
+                    if fee is not None:
+                        return (
+                            f"أهلاً بك 🌸\n\n"
+                            f"💰 *سعر كشف {doc_name}:* {fee} دينار.\n\n"
+                            f"📍 *المقر:* {address}\n📞 *الاستقبال:* {phones}"
+                        )
+        # Fall through to the generic message if no doctor was mentioned.
+
     # Default strictly grounded message
     return (
         f"مرحباً بك في خدمة الاستقبال الآلي لـ *{clinic_name}*{city_suffix} 🌸\n\n"
@@ -292,6 +316,17 @@ def handle_patient_query(phone_number: str, query: str) -> str:
     # Step 1: Emergency Triage Check
     triage_result = triage.evaluate_triage(query, clinic_info)
     if triage_result.is_emergency and triage_result.immediate_response:
+        db.add_conversation_history(phone_number, "user", query)
+        db.add_conversation_history(phone_number, "model", triage_result.immediate_response)
+        return triage_result.immediate_response
+
+    # Step 1b: Clinical advice / prescription requests must be refused
+    # immediately, in every mode. Previously this branch was computed by
+    # triage but discarded unless an LLM was configured, so in the offline
+    # fallback mode a medication question fell through to a generic welcome
+    # instead of the refusal — a guardrail failure in exactly the mode the
+    # README claims works without internet.
+    if triage_result.is_clinical_advice_prohibited and triage_result.immediate_response:
         db.add_conversation_history(phone_number, "user", query)
         db.add_conversation_history(phone_number, "model", triage_result.immediate_response)
         return triage_result.immediate_response
@@ -347,7 +382,7 @@ def handle_patient_query(phone_number: str, query: str) -> str:
 
     # Fallback to local deterministic grounded responder if LLM fails
     if not response_text:
-        response_text = fallback_patient_answer(query, clinic_info, daily_schedule)
+        response_text = fallback_patient_answer(query, clinic_info, daily_schedule, history=history)
 
     # Step 5: Persist Conversation Turns
     db.add_conversation_history(phone_number, "user", query)

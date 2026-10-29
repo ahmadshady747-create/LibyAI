@@ -1127,22 +1127,38 @@ def is_staff_authorized(phone_number: str, db_path: str = DB_PATH) -> Tuple[bool
     Checks if phone_number is authorized in authorized_staff or clinic_info.
     Returns: (is_authorized, role, name)
     """
-    norm_phone = "".join(filter(str.isdigit, phone_number))
+    def _normalize(phone: str) -> str:
+        # Full-number normalization only: strip non-digits, the 00 prefix,
+        # the Libya country code 218, and a leading zero. Substring matching
+        # is forbidden here: a sender id containing a single digit (or a
+        # short suffix) must never match a staff number that merely contains it.
+        digits = "".join(filter(str.isdigit, phone or ""))
+        if digits.startswith("00"):
+            digits = digits[2:]
+        if digits.startswith("218") and len(digits) >= 9:
+            digits = digits[3:]
+        while digits.startswith("0") and len(digits) > 7:
+            digits = digits[1:]
+        return digits
+
+    norm_phone = _normalize(phone_number)
+    if not norm_phone:
+        return False, None, None
     with get_db(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM authorized_staff;")
         all_staff = cursor.fetchall()
         for s in all_staff:
-            s_phone = "".join(filter(str.isdigit, s["phone_number"]))
-            if s_phone and (s_phone in norm_phone or norm_phone in s_phone):
+            s_phone = _normalize(s["phone_number"])
+            if s_phone and s_phone == norm_phone:
                 return True, s["role"], s["name"]
 
         cursor.execute("SELECT value FROM clinic_info WHERE key IN ('authorized_staff_phones', 'authorized_phones');")
         rows = cursor.fetchall()
         for r in rows:
             for p in r["value"].split(","):
-                p_digits = "".join(filter(str.isdigit, p))
-                if p_digits and (p_digits in norm_phone or norm_phone in p_digits):
+                p_digits = _normalize(p)
+                if p_digits and p_digits == norm_phone:
                     return True, "staff", "موظف معتمد"
 
     return False, None, None

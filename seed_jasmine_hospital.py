@@ -432,10 +432,18 @@ def seed_jasmine(db_path: str = DB_PATH):
 
     docs_insert = []
     for doc_name, spec, sched in distinct_docs:
-        docs_insert.append((doc_name, spec, sched, "available", "", 40.0))
+        # Include every column the SQLModel schema declares as NOT NULL without
+        # a database-level default. The legacy schema gains these columns via
+        # db.init_db() migration, so this insert works against both schemas.
+        # (room_number, schedule_days, today_status, today_note, is_active)
+        docs_insert.append((
+            doc_name, spec, sched, "available", "", 40.0,
+            "غير محدد", "السبت,الأحد,الإثنين,الثلاثاء,الأربعاء,الخميس",
+            "available", "", 1,
+        ))
 
     cursor.executemany(
-        "INSERT INTO doctors (name, specialty, regular_schedule, status, daily_note, consultation_fee) VALUES (?, ?, ?, ?, ?, ?);",
+        "INSERT INTO doctors (name, specialty, regular_schedule, status, daily_note, consultation_fee, room_number, schedule_days, today_status, today_note, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
         docs_insert
     )
 

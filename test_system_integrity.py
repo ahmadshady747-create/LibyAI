@@ -98,7 +98,10 @@ async def test_patient_ai_and_multiturn():
 
 async def test_admin_service():
     print("\n--- 5. Testing Admin WhatsApp Group NLP & Edge Cases ---")
-    auth_phone = "0915556677"
+    # Use the seeded test staff number: the previous number was not in the
+    # seeded authorized list, so every "valid" update was rejected as
+    # unauthorized and the test could never pass.
+    auth_phone = "0912345678"
     unauth_phone = "0990000000"
 
     # Test Unauthorized
@@ -145,9 +148,16 @@ async def test_admin_service():
 
 async def test_http_api_endpoints():
     print("\n--- 6. Testing Simulator HTTP API Endpoints ---")
-    async with httpx.AsyncClient(base_url="http://127.0.0.1:8000", timeout=30.0) as client:
+    # Previously this test required a live server on 127.0.0.1:8000, so it
+    # could never pass under pytest and failed with a proxy URL error in
+    # sandboxed environments. Use FastAPI's TestClient instead: it runs the
+    # real app (including lifespan seeding) in-process, with no live server.
+    from fastapi.testclient import TestClient
+    from app.main import app as fastapi_app
+
+    with TestClient(fastapi_app) as client:
         # GET /api/simulator/state
-        r_state = await client.get("/api/simulator/state")
+        r_state = client.get("/api/simulator/state")
         assert r_state.status_code == 200, f"Expected 200, got {r_state.status_code}"
         state_data = r_state.json()
         assert "doctors" in state_data
@@ -155,19 +165,19 @@ async def test_http_api_endpoints():
         print(f"  [PASS] /api/simulator/state OK (doctors count: {len(state_data['doctors'])})")
 
         # POST /api/simulator/patient-message
-        r_pat = await client.post("/api/simulator/patient-message", json={"sender": "218910001122", "message": "السلام عليكم"})
+        r_pat = client.post("/api/simulator/patient-message", json={"sender": "218910001122", "message": "السلام عليكم"})
         assert r_pat.status_code == 200
         assert "reply" in r_pat.json()
         print(f"  [PASS] /api/simulator/patient-message OK -> reply received ({len(r_pat.json()['reply'])} chars)")
 
         # POST /api/simulator/admin-message
-        r_adm = await client.post("/api/simulator/admin-message", json={"sender": "0915556677", "message": "@Bot دكتور باطنة متاح اليوم"})
+        r_adm = client.post("/api/simulator/admin-message", json={"sender": "0915556677", "message": "@Bot دكتور باطنة متاح اليوم"})
         assert r_adm.status_code == 200
         assert "reply" in r_adm.json()
         print(f"  [PASS] /api/simulator/admin-message OK -> reply received")
 
         # POST /api/simulator/clinic-settings (Save settings)
-        r_set = await client.post("/api/simulator/clinic-settings", json={
+        r_set = client.post("/api/simulator/clinic-settings", json={
             "clinic_name": "مصحة الشفاء التخصصية - فرع طرابلس",
             "emergency_phone": "091-2223344",
             "reception_phone": "092-1111111",
