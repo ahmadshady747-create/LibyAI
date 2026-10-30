@@ -16,6 +16,16 @@ from app.api.simulator import router as simulator_router
 logger = logging.getLogger(__name__)
 
 
+def should_skip_default_seed() -> bool:
+    """True only in explicit demo mode (LIBYAI_DEMO_MODE=1).
+
+    Demo mode exists so a fictional demo database survives app startup;
+    it must never be the default, or a real clinic's data added since
+    the last start could be left unseeded in production.
+    """
+    return os.getenv("LIBYAI_DEMO_MODE", "").strip() == "1"
+
+
 async def session_cleanup_task():
     """Periodic background task to prune expired conversation turns every hour."""
     while True:
@@ -37,7 +47,15 @@ async def lifespan(app: FastAPI):
 
     # Initialize SQLModel & raw DB schemas & default seed data
     init_db()
-    seed_database()
+    # Demo mode: seed_database() unconditionally deletes and re-inserts
+    # the default seed data, which would wipe any demo database (and,
+    # in a real pilot, any clinic data added since the last start).
+    # In demo mode the existing database is used as-is, so a fictional
+    # demo seed survives app startup. Normal startup is unchanged.
+    if should_skip_default_seed():
+        print("Demo mode: skipping default seed, using existing database as-is.")
+    else:
+        seed_database()
     db.init_db()
     db.seed_default_data()
     print("Database initialized and seeded.")

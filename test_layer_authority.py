@@ -160,3 +160,16 @@ def test_both_service_finders_agree_on_a_service():
     assert legacy["id"] == modern.id, (
         f"Service finders diverged: legacy row {legacy['id']}, SQLModel row {modern.id}"
     )
+
+
+def test_demo_mode_is_explicit_and_off_by_default(monkeypatch):
+    """LIBYAI_DEMO_MODE must be exactly '1' to skip the default seed."""
+    from app.main import should_skip_default_seed
+
+    for value in ("", "0", "true", "yes", "  "):
+        monkeypatch.setenv("LIBYAI_DEMO_MODE", value)
+        assert should_skip_default_seed() is False
+    monkeypatch.setenv("LIBYAI_DEMO_MODE", "1")
+    assert should_skip_default_seed() is True
+    monkeypatch.delenv("LIBYAI_DEMO_MODE", raising=False)
+    assert should_skip_default_seed() is False
