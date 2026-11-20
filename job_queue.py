@@ -1,13 +1,19 @@
 """
 LibyAI Durable Message Job Queue (`job_queue.py`)
 
-Provides resilient, idempotent SQLite-backed job queue for WhatsApp message ingestion and egress:
-1. Idempotent Ingestion: Deduplicates incoming WhatsApp messages using Meta's unique message ID ("wamid").
+Provides resilient, idempotent SQLite-backed job queue for message
+ingestion and egress across channels (Messenger primary, WhatsApp
+secondary, simulator):
+1. Idempotent Ingestion: Deduplicates incoming messages by
+   (channel, external_message_id) — the same external id on two
+   channels is two different messages.
 2. Durable State: Records incoming events and pending processing jobs atomically in SQLite before acknowledging.
 3. Separation of Concerns: Separates business processing state ('pending', 'processing', 'completed', 'failed')
    from outbound delivery state ('pending', 'processing', 'sent', 'failed', 'skipped').
 4. Worker Recovery: Crash recovery using atomic job leases (lease_expires_at) and recovery of orphaned jobs on startup.
 5. Resilient Retries: Bounded retries (default max_retries=3) with exponential backoff on transient errors.
+6. Channel Outbound: replies are dispatched through the adapter matching
+   the queued job's channel.
 """
 
 import os
@@ -21,16 +27,17 @@ import sqlite3
 from typing import Dict, Any, Optional, Tuple, Callable, Awaitable
 
 import db
-import triage
+import guardrails
 import admin_service
-import patient_service
+import customer_service
 
 logger = logging.getLogger(__name__)
 
 
 class MessageJobQueue:
     """
-    Durable, thread-safe, SQLite-backed job queue for processing WhatsApp messages.
+    Durable, thread-safe, SQLite-backed job queue for processing
+    Messenger/WhatsApp messages.
     """
 
     def __init__(
@@ -53,56 +60,63 @@ class MessageJobQueue:
 
     def enqueue_incoming_message(
         self,
-        provider: str,
-        message_id: str,
-        sender: str,
-        message_text: str,
+        provider: Optional[str] = None,
+        message_id: str = "",
+        sender: str = "",
+        message_text: str = "",
         is_group: bool = False,
         group_id: Optional[str] = None,
-        payload_json: Optional[str] = None
+        payload_json: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> Tuple[bool, int, str]:
         """
         Atomically records an incoming message in the ledger and enqueues a pending job.
-        If (provider, message_id) already exists, treats it as a duplicate and does NOT enqueue a job.
+        If (channel, message_id) already exists, treats it as a duplicate and does NOT enqueue a job.
+
+        `channel` is the new name for the deduplication key; `provider`
+        is kept as a backward-compatible alias (channel wins when both
+        are given). Both columns are stored with the same value.
 
         Returns:
             (is_new, job_id, status_string)
             is_new: True if newly enqueued, False if duplicate.
         """
+        channel = (channel or provider or "whatsapp").strip().lower()
+        provider = channel
         now = time.time()
         with db.get_db(self.db_path) as conn:
             cursor = conn.cursor()
 
             # 1. Check ledger for existing message
             cursor.execute(
-                "SELECT id FROM incoming_messages WHERE provider = ? AND message_id = ?;",
-                (provider, message_id)
+                "SELECT id FROM incoming_messages WHERE channel = ? AND message_id = ?;",
+                (channel, message_id)
             )
             existing_msg = cursor.fetchone()
             if existing_msg:
                 # Look up existing job ID
                 cursor.execute(
-                    "SELECT id, processing_status FROM message_jobs WHERE provider = ? AND message_id = ?;",
-                    (provider, message_id)
+                    "SELECT id, processing_status FROM message_jobs WHERE channel = ? AND message_id = ?;",
+                    (channel, message_id)
                 )
                 existing_job = cursor.fetchone()
                 job_id = existing_job["id"] if existing_job else existing_msg["id"]
-                logger.info(f"[JobQueue] Duplicate message detected: provider={provider}, message_id={message_id}")
+                logger.info(f"[JobQueue] Duplicate message detected: channel={channel}, message_id={message_id}")
                 return False, job_id, "duplicate"
 
             # 2. Insert into incoming_messages ledger
             try:
                 cursor.execute("""
-                    INSERT INTO incoming_messages (provider, message_id, sender, payload_json, created_at)
-                    VALUES (?, ?, ?, ?, ?);
-                """, (provider, message_id, sender, payload_json or "", now))
+                    INSERT INTO incoming_messages (provider, channel, message_id, sender, payload_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                """, (provider, channel, message_id, sender, payload_json or "", now))
                 incoming_id = cursor.lastrowid
             except sqlite3.IntegrityError:
                 # Concurrent race condition caught by UNIQUE constraint
-                logger.info(f"[JobQueue] Concurrent duplicate caught by constraint: {provider}/{message_id}")
+                logger.info(f"[JobQueue] Concurrent duplicate caught by constraint: {channel}/{message_id}")
                 cursor.execute(
-                    "SELECT id FROM incoming_messages WHERE provider = ? AND message_id = ?;",
-                    (provider, message_id)
+                    "SELECT id FROM incoming_messages WHERE channel = ? AND message_id = ?;",
+                    (channel, message_id)
                 )
                 existing = cursor.fetchone()
                 return False, existing["id"] if existing else 0, "duplicate"
@@ -110,19 +124,19 @@ class MessageJobQueue:
             # 3. Atomically enqueue into message_jobs
             cursor.execute("""
                 INSERT INTO message_jobs (
-                    incoming_message_id, provider, message_id, sender, message_text,
+                    incoming_message_id, provider, channel, message_id, sender, message_text,
                     is_group, group_id, processing_status, outbound_status,
                     retry_count, max_retries, next_retry_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', 0, ?, ?, ?, ?);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', 0, ?, ?, ?, ?);
             """, (
-                incoming_id, provider, message_id, sender, message_text,
+                incoming_id, provider, channel, message_id, sender, message_text,
                 1 if is_group else 0, group_id, self.max_retries, now, now, now
             ))
             job_id = cursor.lastrowid
 
         # Wake up background worker if active
         self._notify_event.set()
-        logger.info(f"[JobQueue] Enqueued new message job {job_id} for {provider}/{message_id}")
+        logger.info(f"[JobQueue] Enqueued new message job {job_id} for {channel}/{message_id}")
         return True, job_id, "enqueued"
 
     def acquire_job(self, worker_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -263,6 +277,7 @@ class MessageJobQueue:
         outbound_status = job["outbound_status"]
         response_text = job.get("response_text")
         lease_token = job.get("lease_token")
+        job_channel = (job.get("channel") or job.get("provider") or "whatsapp").strip().lower()
 
         lease_lost_event = asyncio.Event()
 
@@ -298,26 +313,32 @@ class MessageJobQueue:
                             job_id=job_id,
                             lease_token=lease_token,
                             worker_id=self.worker_id,
-                            db_path=self.db_path
+                            db_path=self.db_path,
+                            channel=job_channel,
                         )
                         processing_status = "completed"
                         job["processing_status"] = "completed"
                         job["response_text"] = response_text
                         logger.info(f"[JobQueue] Admin Job {job_id} processing completed atomically.")
                     else:
-                        # Patient message: Fast triage interceptor
-                        clinic_info = db.get_clinic_info(self.db_path)
-                        fast_triage = triage.evaluate_triage(message_text, clinic_info)
-                        if fast_triage.is_emergency and fast_triage.immediate_response:
-                            response_text = fast_triage.immediate_response
+                        # Customer message: fast guardrail interceptor.
+                        # Only a medical Level 1 emergency bypasses the
+                        # customer pipeline here (zero delay); handoff and
+                        # Level 2 are evaluated inside handle_customer_query.
+                        business_profile = db.get_business_profile(self.db_path)
+                        fast_guard = guardrails.evaluate_guardrails(message_text, business_profile)
+                        if fast_guard.is_emergency and fast_guard.immediate_response:
+                            response_text = fast_guard.immediate_response
                         else:
                             response_text = await asyncio.to_thread(
-                                patient_service.handle_patient_query,
+                                customer_service.handle_customer_query,
                                 sender,
-                                message_text
+                                message_text,
+                                job_channel,
+                                self.db_path,
                             )
 
-                        # Fencing check: verify lease before committing patient turn and status
+                        # Fencing check: verify lease before committing customer turn and status
                         if lease_lost_event.is_set() or not self.verify_lease(job_id, lease_token):
                             raise db.StaleWorkerFencedError(
                                 f"Worker {self.worker_id} was superseded while processing job {job_id}."
@@ -327,14 +348,14 @@ class MessageJobQueue:
                         with db.get_db(self.db_path) as conn:
                             cursor = conn.cursor()
                             cursor.execute("""
-                                INSERT INTO conversation_sessions (phone_number, role, message_text, created_at)
-                                VALUES (?, 'user', ?, ?);
-                            """, (sender, message_text, now))
+                                INSERT INTO conversation_sessions (phone_number, role, message_text, created_at, channel)
+                                VALUES (?, 'user', ?, ?, ?);
+                            """, (sender, message_text, now, job_channel))
                             if response_text:
                                 cursor.execute("""
-                                    INSERT INTO conversation_sessions (phone_number, role, message_text, created_at)
-                                    VALUES (?, 'model', ?, ?);
-                                """, (sender, response_text, now))
+                                    INSERT INTO conversation_sessions (phone_number, role, message_text, created_at, channel)
+                                    VALUES (?, 'model', ?, ?, ?);
+                                """, (sender, response_text, now, job_channel))
 
                             cursor.execute("""
                                 UPDATE message_jobs
@@ -435,12 +456,18 @@ class MessageJobQueue:
                         "response_text": None
                     }
 
-                # Outbound sender resolution
+                # Outbound sender resolution: dispatch through the adapter
+                # matching the queued job's channel. An explicit
+                # send_reply_func (tests, custom senders) always wins.
                 if send_reply_func is not None:
                     sender_func = send_reply_func
                 else:
-                    from app.api.webhook import send_whatsapp_reply
-                    sender_func = send_whatsapp_reply
+                    from app.channels.base import send_via_channel
+
+                    async def _channel_sender(to: str, message: str):
+                        return await send_via_channel(job_channel, to=to, message=message)
+
+                    sender_func = _channel_sender
 
                 try:
                     # Record outbound attempt count pre-flight

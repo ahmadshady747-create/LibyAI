@@ -411,22 +411,35 @@ def fallback_patient_responder(query: str, context: str) -> str:
     )
 
 
-def generate_patient_response(user_message: str, chat_history: Optional[list] = None, sender_phone: Optional[str] = None) -> str:
+def generate_customer_response(
+    user_message: str,
+    chat_history: Optional[list] = None,
+    sender_phone: Optional[str] = None,
+    channel: str = "simulator",
+) -> str:
     """
-    Patient inquiries are answered by the legacy patient_service, by
-    design (see ARCHITECTURE.md). That path owns the triage guardrails,
+    Customer inquiries are answered by customer_service, by design
+    (see ARCHITECTURE.md). That path owns the sector-aware guardrails,
     the clinical-advice refusal, and the offline fallback. Do NOT add a
-    second Gemini patient path here: an earlier version had one after
+    second Gemini customer path here: an earlier version had one after
     this return statement, unreachable, which only misled readers about
-    which path actually answers patients.
+    which path actually answers customers.
 
-    sender_phone is passed through to handle_patient_query so each
-    patient's conversation history is keyed by their own number; when
-    absent, the legacy "simulator_patient" key is kept for callers that
-    have no sender (e.g. direct script use).
+    sender_phone and channel are passed through to
+    handle_customer_query so each customer's conversation history is
+    keyed by their own sender id and channel; when absent, the legacy
+    "simulator_patient" key is kept for callers that have no sender
+    (e.g. direct script use).
     """
-    import patient_service
-    return patient_service.handle_patient_query(sender_phone or "simulator_patient", user_message)
+    import customer_service
+    return customer_service.handle_customer_query(
+        sender_phone or "simulator_patient", user_message, channel=channel
+    )
+
+
+def generate_patient_response(user_message: str, chat_history: Optional[list] = None, sender_phone: Optional[str] = None) -> str:
+    """Legacy alias: a patient inquiry is a customer inquiry on WhatsApp."""
+    return generate_customer_response(user_message, chat_history, sender_phone, channel="whatsapp")
 
 
 def ingest_clinic_data_with_ai(

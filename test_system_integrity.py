@@ -11,11 +11,11 @@ if sys.platform == "win32":
     except Exception:
         pass
 import time
-from triage import evaluate_triage, TriageLevel
+from guardrails import evaluate_triage, TriageLevel
 from db import get_clinic_info, get_all_doctors, update_doctor_atomic, find_doctor_fuzzy, update_clinic_info_key
-from patient_service import handle_patient_query
+from customer_service import handle_customer_query
 from admin_service import handle_admin_group_message
-from debouncer import patient_debouncer
+from debouncer import message_debouncer
 
 async def test_triage():
     print("\n--- 1. Testing Triage Level 1 (Emergency Fast-Path Interceptor) ---")
@@ -75,7 +75,7 @@ async def test_patient_ai_and_multiturn():
     phone = f"21891{int(time.time() * 1000) % 10000000:07d}"
     
     # Turn 1
-    resp1 = handle_patient_query(phone, "السلام عليكم، من دكتور العظام الموجود اليوم؟")
+    resp1 = handle_customer_query(phone, "السلام عليكم، من دكتور العظام الموجود اليوم؟")
     print(f"\nTurn 1 Response:\n{resp1}\n")
     assert "عظام" in resp1
     assert "⚠️" not in resp1
@@ -83,14 +83,14 @@ async def test_patient_ai_and_multiturn():
     await asyncio.sleep(1.5)
 
     # Turn 2: Contextual follow-up
-    resp2 = handle_patient_query(phone, "وقداش سعر كشفه؟")
+    resp2 = handle_customer_query(phone, "وقداش سعر كشفه؟")
     print(f"\nTurn 2 Response (Contextual Follow-up):\n{resp2}\n")
     assert "40" in resp2 or "دينار" in resp2 or "دكتور" in resp2
 
     await asyncio.sleep(1.5)
 
     # Turn 3: Booking policy
-    resp3 = handle_patient_query(phone, "احجزلي موعد معاه")
+    resp3 = handle_customer_query(phone, "احجزلي موعد معاه")
     print(f"\nTurn 3 Response (Booking Request):\n{resp3}\n")
     # Must enforce in-person booking
     assert any(term in resp3 for term in ["حضور", "مباشر", "استقبال", "تذكرة", "أسبقية", "اسبقية"])
@@ -134,7 +134,7 @@ async def test_admin_service():
 
     # Patient asks about Dr Youssef now
     check_phone = f"21892{int(time.time() * 1000) % 10000000:07d}"
-    patient_resp = handle_patient_query(check_phone, "هل دكتور العظام يوسف العربي متاح الآن للكشف؟")
+    patient_resp = handle_customer_query(check_phone, "هل دكتور العظام يوسف العربي متاح الآن للكشف؟")
     print(f"\nPatient Check After Doctor Apologized/Left:\n{patient_resp}\n")
     assert any(w in patient_resp for w in ["معتذر", "غادر", "روح", "غير متاح", "اعتذر", "انهى", "أنهى"])
 

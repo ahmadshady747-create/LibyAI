@@ -3,11 +3,11 @@ LibyAI Comprehensive Interactive Simulator CLI (`simulator.py`)
 
 A full production-grade command-line simulator demonstrating:
 1. Rapid Multi-Message Burst Simulation (Async 2.5s Debouncer test).
-2. Emergency Red Flag Interceptor (Zero-delay fast-path bypass test).
-3. Clinical Advice & Prescription Prohibition (Triage Level 2 guardrail test).
+2. Emergency Red Flag Interceptor (Zero-delay fast-path bypass test, medical sectors).
+3. Clinical Advice & Prescription Prohibition (Guardrail Level 2 test, medical sectors).
 4. Multi-Turn Sliding Context (4-turn rolling session memory test).
 5. Staff Admin Group Updates (Ambiguity rejection & explicit receipts).
-6. Live Interactive Terminal Chat (type as Patient or Staff).
+6. Live Interactive Terminal Chat (type as Customer or Staff).
 7. Database State & Audit Logs Inspector.
 """
 
@@ -29,18 +29,19 @@ if sys.platform == "win32":
         pass
 
 import db
-import triage
+import guardrails
 import admin_service
-import patient_service
-from debouncer import patient_debouncer
+import customer_service
+from debouncer import message_debouncer
 from router import dispatch_message
 from app.services.time_utils import get_libya_datetime_context
 
 
 def print_banner():
     time_ctx = get_libya_datetime_context()
+    profile = db.get_business_profile()
     print("=" * 65)
-    print("🏥  LibyAI - Specialized WhatsApp Clinic Automation Simulator")
+    print(f"🏪  LibyAI - {profile.get('name', 'مساعد الأعمال الذكي')} (Messenger أولاً، واتساب ثانياً)")
     print(f"🇱🇾  {time_ctx['summary']}")
     print("=" * 65)
 
@@ -190,6 +191,15 @@ def display_database_state():
     print("\n" + "─" * 65)
     print("📊 [CURRENT DATABASE STATE]: `clinic.db`")
     print("─" * 65)
+
+    profile = db.get_business_profile()
+    print(f"\n🏪 Business: {profile.get('name')} | القطاع: {profile.get('sector')} | العملة: {profile.get('currency', 'LYD')}")
+
+    catalog = db.get_catalog_view()
+    print(f"\n🛍️ Catalog Items ({len(catalog)}):")
+    for c in catalog:
+        avail = "متوفر" if c.get("is_available") else "غير متوفر"
+        print(f"  • ID {c['id']}: [{c.get('category') or 'عام'}] {c['name']} | السعر: {c.get('price_lyd')} د.ل | {avail}")
 
     doctors = db.get_all_doctors()
     print(f"\n👨‍⚕️ Registered Doctors ({len(doctors)}):")

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>نظام الاستقبال والاستفسار الذكي للمصحة - محاكي واتساب المحدث</title>
+  <title>LibyAI — مساعد خدمة العملاء الذكي للأنشطة التجارية (محاكي ماسنجر / واتساب)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
@@ -15,20 +15,20 @@
   <header class="app-header">
     <div class="header-content">
       <div class="brand">
-        <div class="logo-icon">🏥</div>
+        <div class="logo-icon">🏪</div>
         <div>
-          <h1 id="headerClinicTitle">نظام الاستقبال والاستفسار الذكي لمصحة الشفاء</h1>
-          <p class="tagline">تحديث البيانات في الخاص للموظفين المصرح لهم فقط + الرد اللبق على المرضى</p>
+          <h1 id="headerClinicTitle">LibyAI — مساعد خدمة العملاء الذكي</h1>
+          <p class="tagline">ماسنجر أولاً، واتساب ثانياً — تحديث البيانات للموظفين المصرح لهم فقط + الرد اللبق على العملاء</p>
           <div id="libyaTimeDisplay" class="libya-time-badge" style="display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 0.75rem; background: #e0f2fe; color: #0369a1; padding: 2px 10px; border-radius: 12px; font-weight: 600;">
             🇱🇾 توقيت ليبيا (طرابلس): <span id="libyaClockText">جاري التحميل...</span>
           </div>
         </div>
       </div>
       <div class="header-actions">
-        <button id="openSettingsModalBtn" class="btn-secondary" title="تعديل اسم المصحة وسياسة الحجز وأرقام الموظفين المصرح لهم">
-          ⚙️ إعدادات المصحة والمصرح لهم
+        <button id="openSettingsModalBtn" class="btn-secondary" title="تعديل اسم النشاط وسياسة الحجز وأرقام الموظفين المصرح لهم">
+          ⚙️ إعدادات النشاط والمصرح لهم
         </button>
-        <button id="openIngestModalBtn" class="btn-primary-glow" title="إدخال بيانات جديدة أو تحديث أطباء عبر الذكاء الاصطناعي">
+        <button id="openIngestModalBtn" class="btn-primary-glow" title="إدخال بيانات جديدة أو تحديث الكتالوج عبر الذكاء الاصطناعي">
           ✨ إدراج البيانات بـ AI
         </button>
         <button id="wipeDataBtn" class="btn-danger-outline" title="مسح كافة البيانات الوهمية للبدء في إدخال بياناتك الفعلية">
@@ -51,8 +51,12 @@
           <div class="chat-avatar group-avatar">👨‍💼</div>
           <div class="chat-title-info">
             <h2>محادثة موظف الاستقبال (خاص 1:1) 🔒</h2>
+            <div class="channel-switcher" role="group" aria-label="اختيار القناة">
+              <button type="button" class="channel-btn active" data-channel="messenger">💬 ماسنجر</button>
+              <button type="button" class="channel-btn" data-channel="whatsapp">📱 واتساب</button>
+            </div>
             <div class="staff-sender-control">
-              <input type="text" id="staffSenderPhone" class="sender-input" placeholder="رقم الهاتف (مثال: 0920202020)" value="0920202020" title="اكتب رقم هاتفك المصرح به هنا">
+              <input type="text" id="staffSenderPhone" class="sender-input" placeholder="رقم الهاتف (مثال: 0920202020) أو PSID ماسنجر" value="0920202020" title="اكتب رقم هاتفك المصرح به (واتساب) أو معرف PSID (ماسنجر) هنا">
               <span id="staffAuthBadge" class="auth-status-badge authorized" title="حالة تصريح هذا الرقم">مصرح له ✅</span>
               <button type="button" class="btn-micro" id="setSenderAuthorizedBtn" title="تعبئة برقمك المصرح به من الإعدادات">مصرح ✅</button>
               <button type="button" class="btn-micro btn-micro-danger" id="setSenderUnauthorizedBtn" title="تجربة رقم غير مصرح به">غير مصرح ❌</button>
@@ -92,14 +96,14 @@
         <div class="chat-messages" id="adminMessages">
           <div class="system-date-divider">محادثة خاصة 1:1</div>
           <div class="chat-bubble incoming">
-            <span class="sender-name">المساعد الرقمي للمصحة 🤖</span>
-            <p>أهلاً بك زميلي في الاستقبال 🌸<br>هذه القناة مخصصة للموظفين المصرح لهم فقط. يمكنك كتابة أي تحديث لحظي للأطباء أو الأسعار هنا وسينعكس فوراً على المرضى.</p>
+            <span class="sender-name">المساعد الرقمي LibyAI 🤖</span>
+            <p>أهلاً بك زميلي في الاستقبال 🌸<br>هذه القناة مخصصة للموظفين المصرح لهم فقط. يمكنك كتابة أي تحديث لحظي للكتالوج أو الأسعار أو الجداول هنا وسينعكس فوراً على العملاء.</p>
             <span class="msg-time">الآن</span>
           </div>
         </div>
 
         <form class="chat-input-area" id="adminForm">
-          <input type="text" id="adminInput" placeholder="اكتب تحديثاً (مثال: دكتور العظام علي اعتذر اليوم)..." autocomplete="off" required>
+          <input type="text" id="adminInput" placeholder="اكتب تحديثاً (مثال: سعر الشاشة صار 350 دينار)..." autocomplete="off" required>
           <button type="submit" class="send-btn">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -109,21 +113,25 @@
       </div>
     </section>
 
-    <!-- Column 2: Patient 1:1 WhatsApp Chat -->
+    <!-- Column 2: Customer 1:1 Messenger/WhatsApp Chat -->
     <section class="phone-column patient-column">
       <div class="phone-mockup">
         <div class="chat-header">
           <div class="chat-avatar bot-avatar">🤖</div>
           <div class="chat-title-info">
-            <h2 id="patientHeaderTitle">مصحة الشفاء التخصصية 🏥</h2>
+            <h2 id="patientHeaderTitle">LibyAI — مساعد النشاط 🏪</h2>
             <p class="chat-subtitle online-text"><span class="dot-online"></span> متصل 24/7 (رد آلي فوري ولبق)</p>
+            <div class="channel-switcher" role="group" aria-label="اختيار القناة">
+              <button type="button" class="channel-btn active" data-channel="messenger">💬 ماسنجر</button>
+              <button type="button" class="channel-btn" data-channel="whatsapp">📱 واتساب</button>
+            </div>
           </div>
-          <span class="badge-role patient-badge">محادثة مريض</span>
+          <span class="badge-role patient-badge">محادثة عميل</span>
         </div>
 
-        <!-- Patient Quick Prompts -->
+        <!-- Customer Quick Prompts -->
         <div class="quick-chips-container">
-          <span class="chips-title">⚡ جرب استفسارات المرضى والتوجيه الطبي:</span>
+          <span class="chips-title">⚡ جرب استفسارات العملاء (الأسعار، التوفر، التوجيه):</span>
             <button class="chip" data-target="patientInput" data-text="دكتور العظام قاعد توا في المصحة نقدر نجي نكشف؟">
               ⏱️ فحص التواجد توا (حسب وقت ليبيا)
             </button>
@@ -158,14 +166,14 @@
         <div class="chat-messages" id="patientMessages">
           <div class="system-date-divider">اليوم</div>
           <div class="chat-bubble incoming">
-            <span class="sender-name">مساعد الاستقبال الرقمي</span>
-            <p>أهلاً بك في مصحة الشفاء التخصصية 🌸<br>يسعدني خدمتكم والإجابة عن مواعيد الأطباء، أسعار الكشوفات والتحاليل، وإرشادات الفحوصات الطبية.</p>
+            <span class="sender-name">مساعد خدمة العملاء LibyAI</span>
+            <p>أهلاً بك 🌸<br>يسعدني خدمتكم والإجابة عن أسعار المنتجات والخدمات، التوفر، ساعات العمل، والعنوان.</p>
             <span class="msg-time">الآن</span>
           </div>
         </div>
 
         <form class="chat-input-area" id="patientForm">
-          <input type="text" id="patientInput" placeholder="اكتب استفسارك كمريض هنا..." autocomplete="off" required>
+          <input type="text" id="patientInput" placeholder="اكتب استفسارك كعميل هنا..." autocomplete="off" required>
           <button type="submit" class="send-btn">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -177,6 +185,36 @@
 
     <!-- Column 3: Live State & DB Inspector -->
     <section class="dashboard-column">
+      <div class="panel-card">
+        <div class="panel-header">
+          <h3>🏪 بيانات النشاط</h3>
+        </div>
+        <div class="business-info" id="businessInfoPanel">
+          <p class="empty-hint">جارٍ تحميل بيانات النشاط...</p>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel-header">
+          <h3>🛍️ الكتالوج (منتجات / خدمات / أصناف) (<span id="catalogCountBadge">0</span>)</h3>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="catalogTable">
+            <thead>
+              <tr>
+                <th>الصنف</th>
+                <th>الفئة</th>
+                <th>السعر (د.ل)</th>
+                <th>التوفر</th>
+              </tr>
+            </thead>
+            <tbody id="catalogTbody">
+              <tr><td colspan="4" class="text-center">جارٍ تحميل البيانات...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="panel-card">
         <div class="panel-header">
           <h3>🩺 جدول الأطباء اللحظي (<span id="docsCountBadge">0</span>)</h3>
@@ -238,7 +276,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-title">
-          <h3>✨ الإدراج الذكي لبيانات المصحة (جداول، صور، ملفات، نصوص)</h3>
+          <h3>✨ الإدراج الذكي لبيانات النشاط (جداول، صور، ملفات، نصوص)</h3>
           <p>ارفع ملف إكسيل، صورة لافتة، ملف PDF، أو الصق نصوصاً وجداول وسيقوم الذكاء الاصطناعي بهيكلتها فوراً</p>
         </div>
         <button class="modal-close" id="closeIngestModalBtn">&times;</button>
@@ -287,7 +325,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-title">
-          <h3>⚙️ إعدادات المصحة وأرقام الموظفين المصرح لهم</h3>
+          <h3>⚙️ إعدادات النشاط وأرقام الموظفين المصرح لهم</h3>
           <p>تخصيص البيانات الرسمية المحقونة تلقائياً في عقل البوت</p>
         </div>
         <button class="modal-close" id="closeSettingsModalBtn">&times;</button>
@@ -295,8 +333,8 @@
 
       <div class="modal-body">
         <div class="form-group">
-          <label>اسم المصحة الرسمي:</label>
-          <input type="text" id="cfgClinicName" class="form-input" placeholder="مثال: مصحة الشفاء التخصصية">
+          <label>اسم النشاط الرسمي:</label>
+          <input type="text" id="cfgClinicName" class="form-input" placeholder="مثال: متجر النور للإلكترونيات">
         </div>
         <div class="form-group">
           <label>العنوان بالتفصيل:</label>
@@ -304,22 +342,22 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>هاتف الطوارئ والإسعاف (24 ساعة):</label>
+            <label>هاتف التصعيد / الطوارئ:</label>
             <input type="text" id="cfgEmergencyPhone" class="form-input" placeholder="091-0000000">
           </div>
           <div class="form-group">
-            <label>هاتف الاستعلامات المباشر:</label>
+            <label>هاتف الدعم / الاستعلامات المباشر:</label>
             <input type="text" id="cfgReceptionPhone" class="form-input" placeholder="092-1111111">
           </div>
         </div>
         <div class="form-group">
-          <label>سياسة وآلية الحجز الرسمية المعتمدة:</label>
+          <label>سياسة النشاط الرسمية (الحجز / التوصيل / الإرجاع):</label>
           <textarea id="cfgBookingPolicy" rows="3" class="form-input" placeholder="الحجز يتم بالحضور الشخصي المباشر لمكتب الاستقبال..."></textarea>
         </div>
         <div class="form-group">
           <label>💳 طرق الدفع المعتمدة (كاش، بطاقات مصرفية، سداد، تداول...):</label>
           <textarea id="cfgPaymentMethods" rows="2" class="form-input" placeholder="نقداً (كاش)، بطاقات الدفع المصرفي (تداول، نمو)، والخدمات الإلكترونية (سداد، إدفع لي، موبي كاش)..."></textarea>
-          <small style="color: #64748b; font-size: 0.72rem;">يستخدمها البوت للرد فوراً على استفسارات المرضى حول السداد وتداول بدون زيادة أسعار.</small>
+          <small style="color: #64748b; font-size: 0.72rem;">يستخدمها البوت للرد فوراً على استفسارات العملاء حول السداد وتداول بدون زيادة أسعار.</small>
         </div>
         <div class="form-group">
           <label>🏥 شركات التأمين الصحي المتعاقد معها:</label>

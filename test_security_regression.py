@@ -111,6 +111,7 @@ def _audit_log_count() -> int:
 def test_fail_closed_production_startup():
     orig_env = settings.ENVIRONMENT
     orig_secret = settings.WHATSAPP_APP_SECRET
+    orig_channels = settings.ENABLED_CHANNELS
 
     async def run_boot():
         async with lifespan(app):
@@ -151,9 +152,25 @@ def test_fail_closed_production_startup():
         settings.ENVIRONMENT = "development"
         settings.WHATSAPP_APP_SECRET = "dev_meta_app_secret_libyai_2026"
         asyncio.run(run_boot())
+
+        # Case 6 (pivot): Messenger-only production boots cleanly without
+        # any WhatsApp secret (conftest provides a test Messenger secret).
+        settings.ENVIRONMENT = "production"
+        settings.ENABLED_CHANNELS = "messenger"
+        settings.WHATSAPP_APP_SECRET = None
+        asyncio.run(run_boot())
+
+        # Case 7 (pivot): production with no channel enabled must abort.
+        settings.ENABLED_CHANNELS = ""
+        try:
+            asyncio.run(run_boot())
+            assert False, "Expected RuntimeError for no channel enabled in production!"
+        except RuntimeError as e:
+            assert "CRITICAL SECURITY CONFIGURATION ERROR" in str(e)
     finally:
         settings.ENVIRONMENT = orig_env
         settings.WHATSAPP_APP_SECRET = orig_secret
+        settings.ENABLED_CHANNELS = orig_channels
 
 
 # -------------------------------------------------------------------
@@ -648,7 +665,7 @@ async def test_admin_service_validation():
         new_price = None
 
     orig_parse = admin_service.parse_staff_message_with_ai
-    admin_service.parse_staff_message_with_ai = lambda msg: FakeIntent()
+    admin_service.parse_staff_message_with_ai = lambda msg, db_path=None: FakeIntent()
     try:
         reply = admin_service.handle_admin_group_message(
             sender_phone=STAFF_PHONE,
@@ -670,7 +687,7 @@ async def test_admin_service_validation():
             ambiguity_reason = None
             new_price = -50.0  # Negative fee!
 
-        admin_service.parse_staff_message_with_ai = lambda msg: FakeFeeIntent()
+        admin_service.parse_staff_message_with_ai = lambda msg, db_path=None: FakeFeeIntent()
         fee_reply = admin_service.handle_admin_group_message(
             sender_phone=STAFF_PHONE,
             raw_message=f"@Bot كشفية دكتور {DEMO_DOCTOR} صارت -50",
@@ -765,7 +782,7 @@ def test_webhook_patient_dispatch():
     headers = {"X-Hub-Signature-256": sign_payload(raw_bytes), "Content-Type": "application/json"}
     mock_send = AsyncMock(return_value="outbound_msg_id")
     with patch(
-        "patient_service.handle_patient_query",
+        "customer_service.handle_customer_query",
         return_value=f"{DEMO_DOCTOR_FULL} متاح من السبت للخميس",
     ) as mock_patient:
         res = client.post("/webhook/whatsapp", content=raw_bytes, headers=headers)

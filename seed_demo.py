@@ -1,10 +1,21 @@
 """
-Seed Data Script for مصحة النور التجريبية (Al-Noor Demo Clinic) - زليتن
+Seed Data Script — LibyAI multi-sector fictional demo profiles (زليتن)
 
-FICTIONAL DEMO DATA ONLY. Every clinic name, doctor name, phone number and
-schedule in this file is invented for demonstration and testing. No real
-clinic, doctor or person is represented here. Never replace this with real
-clinic data in a public repository.
+FICTIONAL DEMO DATA ONLY. Every business name, person name, phone number,
+price and schedule in this file is invented for demonstration and testing.
+No real business, clinic, doctor or person is represented here. Never
+replace this with real data in a public repository.
+
+Usage:
+    python seed_demo.py [--sector retail|restaurant|clinic|workshop|pharmacy]
+    LIBYAI_DEMO_SECTOR=retail python seed_demo.py
+    seed_demo(db_path, sector="retail")
+
+The clinic profile is the historical default and its data is kept EXACTLY
+as before (existing tests depend on it); it only gains a business_info row
+and clinic FAQs on top. Other profiles seed business_info, catalog_items,
+resources (where relevant), business_faqs, authorized_staff and the legacy
+clinic_info keys.
 """
 
 import sys
@@ -15,16 +26,322 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
     except Exception:
         pass
+import argparse
 import os
 
 DB_PATH = os.environ.get("DB_PATH", "clinic.db")
 
+SECTORS = ("retail", "restaurant", "clinic", "workshop", "pharmacy")
 
-def seed_demo(db_path: str = DB_PATH):
+# Fictional demo staff shared by every profile (demo-only placeholders,
+# matching the AUTHORIZED_STAFF_PHONES default in app/config.py).
+DEMO_STAFF = [
+    ("0910101010", "إدارة النشاط التجريبي", "owner"),
+    ("0930303030", "مشرف الاستقبال التجريبي", "admin"),
+    ("0920202020", "موظف استقبال تجريبي", "staff"),
+]
+
+# Fictional demo Messenger staff PSIDs (demo-only placeholders).
+DEMO_MESSENGER_PSIDS = "demo_psid_staff_1, demo_psid_staff_2"
+
+# --- Clinic FAQs -------------------------------------------------------
+# The booking answer MUST mention الحضور / الاستقبال: existing tests
+# (test_system.py step 8, test_system_integrity.py turn 3) assert those
+# words for booking questions.
+CLINIC_FAQS = [
+    (
+        "كيف أحجز موعد كشف؟",
+        "الحجز يتم بالحضور الشخصي لمكتب الاستقبال أو بالاتصال على رقم الاستقبال خلال ساعات الدوام.",
+        "حجز موعد كشف",
+    ),
+    (
+        "ما هي طرق الدفع المتاحة؟",
+        "نقبل الدفع نقداً وبالبطاقات المصرفية (تداول، نمو) والخدمات الإلكترونية (سداد، إدفع لي، موبي كاش) بنفس السعر النقدي.",
+        "دفع سداد تداول بطاقة",
+    ),
+    (
+        "هل قسم الطوارئ متاح 24 ساعة؟",
+        "نعم، قسم الطوارئ متاح 24 ساعة يومياً على مدار الأسبوع.",
+        "طوارئ 24 ساعة",
+    ),
+]
+
+# --- Generic (non-clinic) profiles --------------------------------------
+# Format per profile:
+#   business_info: (name, sector, address, support_phone, escalation_phone,
+#                   working_hours, policy_notes)
+#   catalog: list of (name, category, price_lyd, is_available, schedule_or_eta, details)
+#   resources: list of (name, role_or_specialty, schedule, is_available, notes)
+#   faqs: list of (question, answer, keywords)
+PROFILES = {
+    "retail": {
+        "business_info": (
+            "متجر النور للإلكترونيات",
+            "retail",
+            "زليتن - شارع تجريبي",
+            "0910202020",
+            "0910202020",
+            "السبت - الخميس: 9 صباحاً - 9 مساءً، الجمعة: 4 مساءً - 9 مساءً",
+            "الدفع نقداً أو عبر تداول وسداد بنفس السعر، الإرجاع خلال 7 أيام مع الفاتورة، التوصيل داخل زليتن 15 د.ل.",
+        ),
+        "catalog": [
+            ("شاشة سامسونج 55 بوصة", "شاشات", 2450.0, 1, "متوفرة في المحل", "شاشة ذكية 4K مع ضمان سنتين"),
+            ("ثلاجة هيتاشي", "أجهزة منزلية", 3200.0, 1, "متوفرة في المحل", "ثلاجة بابين مع ضمان 3 سنوات"),
+            ("غسالة ال جي", "أجهزة منزلية", 2800.0, 1, "متوفرة في المحل", "غسالة أوتوماتيك 8 كجم"),
+            ("مكيف جنرال 12", "تكييف", 1800.0, 1, "متوفرة في المحل", "مكيف سبلت 12000 وحدة مع التركيب"),
+            ("هاتف شاومي نوت", "هواتف", 1450.0, 1, "متوفر في المحل", "ذاكرة 256 جيجا، رام 8 جيجا"),
+            ("سماعات بلوتوث", "إكسسوارات", 120.0, 1, "متوفرة في المحل", "سماعات لاسلكية مع علبة شحن"),
+            ("مكنسة كهربائية", "أجهزة منزلية", 450.0, 0, "تصل خلال أسبوع", "مكنسة 2000 واط"),
+            ("فرن كهربائي", "أجهزة منزلية", 650.0, 1, "متوفر في المحل", "فرن 60 لتر مع شواية"),
+        ],
+        "resources": [],
+        "faqs": [
+            (
+                "كم سعر التوصيل؟",
+                "التوصيل داخل مدينة زليتن 15 د.ل، وخارجها حسب المدينة، ويتم التوصيل خلال يوم إلى يومين.",
+                "توصيل شحن سعر",
+            ),
+            (
+                "ما هي طرق الدفع؟",
+                "نقبل الدفع نقداً وعبر تداول وسداد وموبي كاش بنفس السعر النقدي وبدون عمولة إضافية.",
+                "دفع سداد تداول موبي كاش",
+            ),
+            (
+                "هل يمكن إرجاع المنتج؟",
+                "نعم، يمكنك إرجاع المنتج خلال 7 أيام من الشراء مع الفاتورة بحالته الأصلية.",
+                "إرجاع استبدال ضمان",
+            ),
+        ],
+    },
+    "restaurant": {
+        "business_info": (
+            "مطعم النور للمشويات",
+            "restaurant",
+            "زليتن - شارع تجريبي",
+            "0910303030",
+            "0910303030",
+            "يومياً: 11 صباحاً - 12 منتصف الليل",
+            "الحجز بالحضور أو الاتصال، التوصيل داخل زليتن 10 د.ل خلال 45 دقيقة، الدفع نقداً أو سداد.",
+        ),
+        "catalog": [
+            ("مشوي مشكل", "مشويات", 65.0, 1, "جاهز خلال 25 دقيقة", "لحم ودجاج مشوي مع الأرز والسلطة"),
+            ("شاورما دجاج", "سندويتشات", 18.0, 1, "جاهزة خلال 10 دقائق", "شاورما دجاج مع الثومية والمخلل"),
+            ("شاورما لحم", "سندويتشات", 22.0, 1, "جاهزة خلال 10 دقائق", "شاورما لحم مع الطحينة"),
+            ("برجر لحم", "سندويتشات", 25.0, 1, "جاهز خلال 15 دقيقة", "برجر لحم مع الجبن والبطاطس"),
+            ("بيتزا خضار", "بيتزا", 30.0, 1, "جاهزة خلال 20 دقيقة", "بيتزا بالخضار المشكلة والجبن"),
+            ("سلطة مشكلة", "سلطات", 12.0, 1, "جاهزة فوراً", "سلطة خضار طازجة مع زيت الزيتون"),
+            ("عصير برتقال طبيعي", "مشروبات", 8.0, 1, "جاهز فوراً", "عصير برتقال طازج"),
+            ("مشروب غازي", "مشروبات", 5.0, 1, "جاهز فوراً", "مشروب غازي بارد"),
+        ],
+        "resources": [],
+        "faqs": [
+            (
+                "هل يوجد توصيل؟",
+                "نعم، نوصل داخل مدينة زليتن مقابل 10 د.ل خلال 45 دقيقة تقريباً.",
+                "توصيل دليفري",
+            ),
+            (
+                "كيف أحجز طاولة؟",
+                "الحجز بالحضور الشخصي أو بالاتصال على رقم المطعم خلال ساعات العمل.",
+                "حجز طاولة",
+            ),
+            (
+                "ما هي طرق الدفع؟",
+                "نقبل الدفع نقداً وعبر سداد وموبي كاش.",
+                "دفع سداد موبي كاش",
+            ),
+        ],
+    },
+    "workshop": {
+        "business_info": (
+            "ورشة النور لصيانة السيارات",
+            "workshop",
+            "زليتن - شارع تجريبي",
+            "0910404040",
+            "0910404040",
+            "السبت - الخميس: 8 صباحاً - 7 مساءً، الجمعة مغلق",
+            "الحجز بالحضور أو الاتصال، ضمان 3 أشهر على أعمال الصيانة، الدفع نقداً أو سداد.",
+        ),
+        "catalog": [
+            ("تغيير زيت المحرك", "صيانة دورية", 120.0, 1, "يتم خلال ساعة", "زيت محرك مع الفلتر"),
+            ("فحص كمبيوتر", "تشخيص", 50.0, 1, "يتم خلال نصف ساعة", "فحص شامل بأنظمة السيارة"),
+            ("تغيير فرامل", "صيانة", 180.0, 1, "يتم خلال ساعتين", "تغيير أقمشة الفرامل الأمامية والخلفية"),
+            ("صيانة مكيف السيارة", "صيانة", 250.0, 1, "يتم خلال 3 ساعات", "شحن غاز وفحص دورة التكييف"),
+            ("غسيل كامل", "غسيل", 35.0, 1, "يتم خلال 45 دقيقة", "غسيل خارجي وداخلي شامل"),
+            ("تغيير إطارات", "إطارات", 80.0, 1, "يتم خلال ساعة", "تغيير وترصيص 4 إطارات"),
+        ],
+        "resources": [
+            ("سالم بن عيسى", "فني ميكانيكا", "السبت - الخميس: 8 صباحاً - 7 مساءً", 1, "متخصص في المحركات"),
+            ("عمر الحداد", "فني كهرباء سيارات", "السبت - الخميس: 9 صباحاً - 6 مساءً", 1, "متخصص في أنظمة الكهرباء والتكييف"),
+        ],
+        "faqs": [
+            (
+                "هل يوجد ضمان على الصيانة؟",
+                "نعم، جميع أعمال الصيانة مضمونة لمدة 3 أشهر.",
+                "ضمان صيانة",
+            ),
+            (
+                "كيف أحجز موعد صيانة؟",
+                "الحجز بالحضور الشخصي للورشة أو بالاتصال على رقم الورشة خلال ساعات العمل.",
+                "حجز موعد صيانة",
+            ),
+            (
+                "ما هي طرق الدفع؟",
+                "نقبل الدفع نقداً وعبر سداد.",
+                "دفع سداد",
+            ),
+        ],
+    },
+    "pharmacy": {
+        "business_info": (
+            "صيدلية النور",
+            "pharmacy",
+            "زليتن - شارع تجريبي",
+            "0910505050",
+            "0910505050",
+            "يومياً: 8 صباحاً - 12 منتصف الليل",
+            "الأدوية الموصوفة تحتاج وصفة طبية، التوصيل داخل زليتن 10 د.ل، الدفع نقداً أو سداد.",
+        ),
+        "catalog": [
+            ("فيتامين سي", "فيتامينات", 25.0, 1, "متوفر في الصيدلية", "فيتامين سي 1000 ملغ، 20 قرص فوار"),
+            ("مسكن عام", "مسكنات", 15.0, 1, "متوفر في الصيدلية", "مسكن وخافض حرارة، يرجى استشارة الصيدلي"),
+            ("معقم يدين", "عناية", 10.0, 1, "متوفر في الصيدلية", "معقم يدين 250 مل"),
+            ("ضمادات طبية", "مستلزمات", 8.0, 1, "متوفرة في الصيدلية", "علبة ضمادات متنوعة"),
+            ("شامبو طبي", "عناية", 30.0, 1, "متوفر في الصيدلية", "شامبو طبي للشعر الجاف"),
+            ("كريم مرطب", "عناية", 20.0, 1, "متوفر في الصيدلية", "كريم مرطب للبشرة الجافة"),
+        ],
+        "resources": [
+            ("صيدلي المناوبة", "صيدلي", "يومياً: 8 صباحاً - 12 منتصف الليل", 1, "للاستشارة حول الأدوية المتاحة"),
+        ],
+        "faqs": [
+            (
+                "هل أحتاج وصفة طبية؟",
+                "الأدوية الموصوفة تحتاج وصفة طبية سارية، أما مستحضرات العناية والفيتامينات فمتاحة بدون وصفة.",
+                "وصفة طبية دواء",
+            ),
+            (
+                "هل يوجد توصيل؟",
+                "نعم، نوصل داخل مدينة زليتن مقابل 10 د.ل.",
+                "توصيل",
+            ),
+            (
+                "ما هي ساعات العمل؟",
+                "نعمل يومياً من 8 صباحاً حتى 12 منتصف الليل.",
+                "ساعات العمل دوام",
+            ),
+        ],
+    },
+}
+
+
+def _seed_generic_profile(cursor, sector: str):
+    """Seeds one of the non-clinic fictional demo profiles."""
+    profile = PROFILES[sector]
+    name, sector_value, address, support_phone, escalation_phone, working_hours, policy_notes = profile["business_info"]
+
+    clinic_constants = {
+        "name": name,
+        "clinic_name": name,
+        "address": address,
+        "city": "زليتن",
+        "emergency_phone": escalation_phone,
+        "reception_phone": support_phone,
+        "is_medical": "1" if sector_value in ("pharmacy", "medical") else "0",
+        "contact_numbers": support_phone,
+        "map_link": "https://maps.google.com/?q=Zliten",
+        "booking_policy": policy_notes,
+        "authorized_staff_phones": "0910101010, 0930303030, 0920202020",
+        "authorized_messenger_psids": DEMO_MESSENGER_PSIDS,
+    }
+    for k, v in clinic_constants.items():
+        cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES (?, ?);", (k, v))
+
+    cursor.execute("DELETE FROM authorized_staff;")
+    cursor.executemany("INSERT INTO authorized_staff (phone_number, name, role) VALUES (?, ?, ?);", DEMO_STAFF)
+
+    cursor.execute("DELETE FROM business_info;")
+    cursor.execute(
+        "INSERT INTO business_info (id, name, sector, address, support_phone, escalation_phone, working_hours, policy_notes, currency) "
+        "VALUES (1, ?, ?, ?, ?, ?, ?, ?, 'LYD');",
+        (name, sector_value, address, support_phone, escalation_phone, working_hours, policy_notes),
+    )
+
+    cursor.execute("DELETE FROM catalog_items;")
+    cursor.executemany(
+        "INSERT INTO catalog_items (name, category, price_lyd, is_available, schedule_or_eta, details) VALUES (?, ?, ?, ?, ?, ?);",
+        profile["catalog"],
+    )
+
+    cursor.execute("DELETE FROM resources;")
+    if profile["resources"]:
+        cursor.executemany(
+            "INSERT INTO resources (name, role_or_specialty, schedule, is_available, notes) VALUES (?, ?, ?, ?, ?);",
+            profile["resources"],
+        )
+
+    cursor.execute("DELETE FROM business_faqs;")
+    cursor.executemany(
+        "INSERT INTO business_faqs (question, answer, keywords) VALUES (?, ?, ?);",
+        profile["faqs"],
+    )
+
+
+def seed_demo(db_path: str = DB_PATH, sector: str = "clinic"):
+    sector = (sector or "clinic").strip().lower()
+    if sector not in SECTORS:
+        raise ValueError(f"Unknown demo sector: {sector!r}. Choose one of: {', '.join(SECTORS)}")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # 1. Create tables if not exist
+    # 1. Create tables if not exist (DDL mirrors db.init_db, so the script
+    # also works standalone on a fresh database without importing db —
+    # importing db would seed the default clinic.db as an import side
+    # effect, which a --db script must never do).
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS doctors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        specialty TEXT NOT NULL,
+        regular_schedule TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('available', 'apologized', 'delayed', 'left', 'arrived', 'booking_closed')),
+        daily_note TEXT DEFAULT '',
+        consultation_fee REAL NOT NULL DEFAULT 40.0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctors_specialty ON doctors(specialty);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctors_name ON doctors(name);")
+    cursor.execute("PRAGMA table_info(doctors);")
+    _d_cols = [c[1] for c in cursor.fetchall()]
+    if "room_number" not in _d_cols:
+        cursor.execute("ALTER TABLE doctors ADD COLUMN room_number TEXT DEFAULT 'غير محدد';")
+    if "schedule_days" not in _d_cols:
+        cursor.execute("ALTER TABLE doctors ADD COLUMN schedule_days TEXT DEFAULT 'السبت,الأحد,الإثنين,الثلاثاء,الأربعاء,الخميس';")
+    if "today_status" not in _d_cols:
+        cursor.execute("ALTER TABLE doctors ADD COLUMN today_status TEXT DEFAULT 'available';")
+    if "today_note" not in _d_cols:
+        cursor.execute("ALTER TABLE doctors ADD COLUMN today_note TEXT DEFAULT '';")
+    if "is_active" not in _d_cols:
+        cursor.execute("ALTER TABLE doctors ADD COLUMN is_active INTEGER DEFAULT 1;")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS services (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        price REAL NOT NULL DEFAULT 0.0,
+        instructions TEXT DEFAULT ''
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_services_category ON services(category);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_services_name ON services(name);")
+    cursor.execute("PRAGMA table_info(services);")
+    _s_cols = [c[1] for c in cursor.fetchall()]
+    if "prep_instructions" not in _s_cols:
+        cursor.execute("ALTER TABLE services ADD COLUMN prep_instructions TEXT DEFAULT '';")
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS clinic_info (
         key TEXT PRIMARY KEY,
@@ -93,6 +410,66 @@ def seed_demo(db_path: str = DB_PATH):
     );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_conv_hist_sender ON conversation_history(clinic_id, sender_phone, created_at);")
+
+    # Business tables (multi-sector; DDL mirrors db.init_db).
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS business_info (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        name TEXT NOT NULL,
+        sector TEXT NOT NULL DEFAULT 'clinic'
+            CHECK(sector IN ('retail', 'restaurant', 'clinic', 'pharmacy',
+                             'service_office', 'workshop', 'general', 'medical')),
+        address TEXT NOT NULL DEFAULT 'ليبيا',
+        map_link TEXT DEFAULT '',
+        support_phone TEXT DEFAULT '',
+        escalation_phone TEXT DEFAULT '',
+        working_hours TEXT DEFAULT '',
+        policy_notes TEXT DEFAULT '',
+        currency TEXT NOT NULL DEFAULT 'LYD',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS catalog_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        price_lyd REAL NOT NULL DEFAULT 0.0,
+        is_available INTEGER NOT NULL DEFAULT 1,
+        schedule_or_eta TEXT DEFAULT '',
+        details TEXT DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS resources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        role_or_specialty TEXT NOT NULL DEFAULT '',
+        schedule TEXT DEFAULT '',
+        is_available INTEGER NOT NULL DEFAULT 1,
+        notes TEXT DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS business_faqs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        keywords TEXT DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Non-clinic profiles seed only the generic tables and return; the
+    # clinic path below is kept exactly as before.
+    if sector != "clinic":
+        _seed_generic_profile(cursor, sector)
+        conn.commit()
+        conn.close()
+        print(f"✅ Seeded fictional demo data successfully! (sector: {sector})")
+        return
 
     # 2. Update Clinic Identity
     clinic_constants = {
@@ -451,10 +828,40 @@ def seed_demo(db_path: str = DB_PATH):
         docs_insert
     )
 
+    # 7. Business profile row + clinic FAQs (pivot addition; the clinic
+    # data above is unchanged).
+    cursor.execute("DELETE FROM business_info;")
+    cursor.execute(
+        "INSERT INTO business_info (id, name, sector, address, map_link, support_phone, escalation_phone, working_hours, policy_notes, currency) "
+        "VALUES (1, 'مصحة النور التجريبية', 'clinic', 'زليتن - شارع تجريبي', 'https://maps.google.com/?q=Zliten', "
+        "'0910101010 - 0930303030', '0910101010 - 0930303030', "
+        "'السبت - الخميس: 8 صباحاً - 8 مساءً، الطوارئ 24 ساعة', "
+        "'الاستقبال والاستفسارات متاحة 24 ساعة، الحضور والمتابعة وفق الفترات المعلنة، والتوقيتات تقريبية تختلف باختلاف عيادات المتابعة.', 'LYD');"
+    )
+    cursor.execute("DELETE FROM business_faqs;")
+    cursor.executemany(
+        "INSERT INTO business_faqs (question, answer, keywords) VALUES (?, ?, ?);",
+        CLINIC_FAQS,
+    )
+    # Demo Messenger staff PSIDs (demo-only placeholders).
+    cursor.execute(
+        "INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('authorized_messenger_psids', ?);",
+        (DEMO_MESSENGER_PSIDS,),
+    )
+
     conn.commit()
     conn.close()
     print("✅ Seeded Al-Noor Demo Clinic data successfully!")
 
 
 if __name__ == "__main__":
-    seed_demo()
+    parser = argparse.ArgumentParser(description="Seed LibyAI with a fictional demo profile (all data fictional).")
+    parser.add_argument(
+        "--sector",
+        default=os.environ.get("LIBYAI_DEMO_SECTOR", "clinic"),
+        choices=list(SECTORS),
+        help="Demo business sector to seed (default: clinic, or LIBYAI_DEMO_SECTOR).",
+    )
+    parser.add_argument("--db", default=DB_PATH, help="SQLite database path (default: DB_PATH env or clinic.db).")
+    args = parser.parse_args()
+    seed_demo(db_path=args.db, sector=args.sector)

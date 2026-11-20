@@ -5,7 +5,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "LibyAI - Smart Reception Bot"
+    PROJECT_NAME: str = "LibyAI - Smart Business Assistant"
+    # Business identity. The BUSINESS_* names are the new multi-sector
+    # settings; the CLINIC_* names stay as backward-compatible aliases
+    # (an existing deployment that sets CLINIC_NAME keeps working).
+    BUSINESS_NAME: str = os.getenv("BUSINESS_NAME", os.getenv("CLINIC_NAME", "المصحة الطبية"))
+    BUSINESS_SECTOR: str = os.getenv("BUSINESS_SECTOR", "clinic")
+    BUSINESS_CURRENCY: str = os.getenv("BUSINESS_CURRENCY", "LYD")
+    SUPPORT_PHONE: str = os.getenv("SUPPORT_PHONE", os.getenv("RECEPTION_PHONE", "0910000000"))
+    ESCALATION_PHONE: str = os.getenv("ESCALATION_PHONE", os.getenv("EMERGENCY_PHONE", "0910000000"))
     CLINIC_NAME: str = os.getenv("CLINIC_NAME", "المصحة الطبية")
     CLINIC_TYPE: str = os.getenv("CLINIC_TYPE", "مصحة")
     CLINIC_ADDRESS: str = os.getenv("CLINIC_ADDRESS", "ليبيا")
@@ -26,6 +34,18 @@ class Settings(BaseSettings):
     WHATSAPP_TOKEN: Optional[str] = None
     WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
     WHATSAPP_APP_SECRET: Optional[str] = None
+
+    # Messenger (PRIMARY channel). Same fail-closed rule as WhatsApp:
+    # no development defaults for any secret.
+    MESSENGER_APP_SECRET: Optional[str] = None
+    MESSENGER_VERIFY_TOKEN: Optional[str] = None
+    MESSENGER_PAGE_ACCESS_TOKEN: Optional[str] = None
+    MESSENGER_PAGE_ID: Optional[str] = None
+
+    # Channels enabled for this deployment, comma-separated.
+    # "messenger" runs Messenger-only (WhatsApp secrets not required);
+    # "messenger,whatsapp" runs both. Unknown names are ignored.
+    ENABLED_CHANNELS: str = "messenger,whatsapp"
 
     # Database
     DATABASE_URL: str = "sqlite:///./clinic.db"
@@ -59,25 +79,67 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
+# A previously published development default value. It must never be
+# accepted as a production secret on any channel.
+DEV_DEFAULT_APP_SECRET = "dev_meta_app_secret_libyai_2026"
+
+KNOWN_CHANNELS = ("messenger", "whatsapp")
+
+
+def enabled_channels(s: Settings = None) -> List[str]:
+    """Parses ENABLED_CHANNELS into a deduplicated list of known channels,
+    preserving the configured order. Unknown names are ignored."""
+    cfg = s or settings
+    seen = set()
+    out = []
+    for raw in (cfg.ENABLED_CHANNELS or "").split(","):
+        name = raw.strip().lower()
+        if name in KNOWN_CHANNELS and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
 def validate_production_security(s: Settings = None) -> None:
     """
     Enforces fail-closed startup behavior in production.
-    Raises RuntimeError if ENVIRONMENT is production and WHATSAPP_APP_SECRET
-    is missing, blank, or using a previously published development default.
-    A missing ADMIN_SECRET_KEY or WHATSAPP_VERIFY_TOKEN is not a startup
-    error by design: those endpoints fail closed on their own (webhook
-    verification rejects, simulator admin rejects), so a production deploy
-    without them simply cannot verify webhooks or use simulator admin.
+    Raises RuntimeError if ENVIRONMENT is production and:
+    - no channel is enabled, or
+    - any enabled channel's Meta app secret is missing, blank, or using
+      a previously published development default.
+    A missing ADMIN_SECRET_KEY or verify token is not a startup error
+    by design: those endpoints fail closed on their own (webhook
+    verification rejects, simulator admin rejects), so a production
+    deploy without them simply cannot verify webhooks or use simulator
+    admin. WhatsApp secrets are only required when WhatsApp is enabled,
+    so a Messenger-only deployment boots cleanly without WHATSAPP_*.
     """
     cfg = s or settings
     if cfg.ENVIRONMENT.strip().lower() == "production":
-        secret = (cfg.WHATSAPP_APP_SECRET or "").strip()
-        if not secret or secret == "dev_meta_app_secret_libyai_2026":
+        channels = enabled_channels(cfg)
+        if not channels:
             raise RuntimeError(
                 "CRITICAL SECURITY CONFIGURATION ERROR: Application cannot start in production "
-                "with missing, blank, or development default WHATSAPP_APP_SECRET. "
-                "Configure a strong server-side WHATSAPP_APP_SECRET."
+                "with no channel enabled. Set ENABLED_CHANNELS to at least one of "
+                "'messenger' or 'whatsapp'."
             )
+        channel_secrets = {
+            "messenger": cfg.MESSENGER_APP_SECRET,
+            "whatsapp": cfg.WHATSAPP_APP_SECRET,
+        }
+        for channel in channels:
+            secret = (channel_secrets.get(channel) or "").strip()
+            if not secret or secret == DEV_DEFAULT_APP_SECRET:
+                secret_name = (
+                    "MESSENGER_APP_SECRET" if channel == "messenger"
+                    else "WHATSAPP_APP_SECRET"
+                )
+                raise RuntimeError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: Application cannot start in production "
+                    f"with missing, blank, or development default {secret_name} "
+                    f"(channel '{channel}' is enabled). "
+                    f"Configure a strong server-side {secret_name}."
+                )
 
 
 settings = Settings()

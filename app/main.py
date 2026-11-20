@@ -11,6 +11,7 @@ import db
 from app.database.session import init_db
 from app.database.seed import seed_database
 from app.api.webhook import router as webhook_router
+from app.channels.messenger import router as messenger_router
 from app.api.simulator import router as simulator_router
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="نظام الاستقبال والاستفسار الذكي لمصحة طبية عبر واتساب",
-    version="1.0.0",
+    description="مساعد خدمة العملاء الذكي للأنشطة التجارية الليبية — ماسنجر أولاً، واتساب ثانياً",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -100,10 +101,12 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Admin-Key", "X-Hub-Signature-256", "Accept"],
 )
 
-# Include Routers
+# Include Routers: Messenger is the primary channel, WhatsApp secondary,
+# and the legacy /whatsapp/* routes stay for backward compatibility.
 from router import router as core_whatsapp_router
-app.include_router(core_whatsapp_router)
+app.include_router(messenger_router)
 app.include_router(webhook_router)
+app.include_router(core_whatsapp_router)
 app.include_router(simulator_router)
 
 # Mount Static Files
@@ -119,9 +122,16 @@ async def root():
     index_file = os.path.join(static_dir, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
-    return {"message": "LibyAI Clinic Reception System API is running."}
+    return {"message": "LibyAI Business Assistant API is running."}
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "clinic": settings.CLINIC_NAME}
+    from app.config import enabled_channels
+
+    return {
+        "status": "ok",
+        "business": settings.BUSINESS_NAME,
+        "sector": settings.BUSINESS_SECTOR,
+        "channels": enabled_channels(),
+    }

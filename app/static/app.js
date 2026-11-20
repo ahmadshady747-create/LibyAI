@@ -1,4 +1,4 @@
-// LibyAI Interactive WhatsApp Simulator Client
+// LibyAI Interactive Simulator Client — Messenger (default) / WhatsApp
 
 document.addEventListener("DOMContentLoaded", () => {
   // Elements
@@ -16,14 +16,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const doctorsTbody = document.getElementById("doctorsTbody");
   const servicesTbody = document.getElementById("servicesTbody");
+  const catalogTbody = document.getElementById("catalogTbody");
+  const businessInfoPanel = document.getElementById("businessInfoPanel");
   const auditLogsContainer = document.getElementById("auditLogsContainer");
   const resetDbBtn = document.getElementById("resetDbBtn");
   const wipeDataBtn = document.getElementById("wipeDataBtn");
 
   const docsCountBadge = document.getElementById("docsCountBadge");
   const servicesCountBadge = document.getElementById("servicesCountBadge");
+  const catalogCountBadge = document.getElementById("catalogCountBadge");
   const headerClinicTitle = document.getElementById("headerClinicTitle");
   const patientHeaderTitle = document.getElementById("patientHeaderTitle");
+
+  // Active channel for both chat columns. Messenger is the default
+  // (LibyAI is Messenger-first); WhatsApp is secondary.
+  let currentChannel = "messenger";
+
+  document.querySelectorAll(".channel-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      currentChannel = btn.dataset.channel || "messenger";
+      document.querySelectorAll(".channel-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.channel === currentChannel);
+      });
+    });
+  });
 
   // DEMO-ONLY DEFAULT: fictional placeholder staff numbers for the local
   // simulator, matching the AUTHORIZED_STAFF_PHONES default in
@@ -172,10 +188,27 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/api/simulator/state");
       const data = await res.json();
 
-      // Update Clinic Title
-      if (data.configs && data.configs.clinic_name) {
-        if (headerClinicTitle) headerClinicTitle.innerText = `نظام الاستقبال والاستفسار الذكي لـ ${data.configs.clinic_name}`;
-        if (patientHeaderTitle) patientHeaderTitle.innerText = `${data.configs.clinic_name} 🏥`;
+      // Update Business Title
+      const businessName = (data.business && data.business.name) || (data.configs && data.configs.clinic_name);
+      if (businessName) {
+        if (headerClinicTitle) headerClinicTitle.innerText = `LibyAI — مساعد خدمة العملاء لـ ${businessName}`;
+        if (patientHeaderTitle) patientHeaderTitle.innerText = `${businessName} 🏪`;
+      }
+
+      // Render Business Info panel
+      if (businessInfoPanel) {
+        if (data.business) {
+          const b = data.business;
+          businessInfoPanel.innerHTML = `
+            <p><strong>${escapeHtml(b.name || "")}</strong> — ${escapeHtml(b.sector || "general")}</p>
+            <p class="text-muted">📍 ${escapeHtml(b.address || "")}</p>
+            <p class="text-muted">🕐 ${escapeHtml(b.working_hours || "")}</p>
+            <p class="text-muted">📞 دعم: ${escapeHtml(b.support_phone || "")} | تصعيد: ${escapeHtml(b.escalation_phone || "")}</p>
+            <p class="text-muted">💱 العملة: ${escapeHtml(b.currency || "LYD")}</p>
+          `;
+        } else {
+          businessInfoPanel.innerHTML = `<p class="empty-hint">لا توجد بيانات نشاط.</p>`;
+        }
       }
 
       // Sync Authorized Phones
@@ -192,6 +225,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (docsCountBadge) docsCountBadge.innerText = data.doctors.length;
       if (servicesCountBadge) servicesCountBadge.innerText = data.services.length;
+      if (catalogCountBadge) catalogCountBadge.innerText = (data.catalog_items || []).length;
+
+      // 0. Render Catalog
+      if (catalogTbody) {
+        catalogTbody.innerHTML = "";
+        const catalog = data.catalog_items || [];
+        if (catalog.length === 0) {
+          catalogTbody.innerHTML = `<tr><td colspan="4" class="text-center" style="padding: 1.5rem; color: #94a3b8;">لا توجد أصناف في الكتالوج حالياً.</td></tr>`;
+        } else {
+          catalog.forEach(item => {
+            const tr = document.createElement("tr");
+            const availText = item.is_available ? "متوفر ✅" : "غير متوفر ❌";
+            tr.innerHTML = `
+              <td><strong>${escapeHtml(item.name)}</strong></td>
+              <td><small>${escapeHtml(item.category || "عام")}</small></td>
+              <td><b>${escapeHtml(item.price_lyd)} د.ل</b></td>
+              <td><small>${availText}</small></td>
+            `;
+            catalogTbody.appendChild(tr);
+          });
+        }
+      }
 
 
       // 1. Render Doctors
@@ -309,7 +364,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/api/simulator/admin-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: senderPhone, message: msg })
+        body: JSON.stringify({ sender: senderPhone, message: msg, channel: currentChannel })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -317,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!data.authorized) {
         appendBubble(adminMessages, data.reply, "incoming", "نظام الأمان 🛡️", true);
       } else if (data.reply) {
-        appendBubble(adminMessages, data.reply, "incoming", "المساعد الرقمي للمصحة 🤖", true);
+        appendBubble(adminMessages, data.reply, "incoming", "المساعد الرقمي LibyAI 🤖", true);
         await refreshSystemState();
       }
     } catch (err) {
@@ -334,32 +389,36 @@ document.addEventListener("DOMContentLoaded", () => {
     const msg = patientInput.value.trim();
     if (!msg) return;
 
-    appendBubble(patientMessages, msg, "outgoing", "أنت (المريض)");
+    appendBubble(patientMessages, msg, "outgoing", "أنت (العميل)");
     patientInput.value = "";
 
     // Show temporary typing indicator
     const typingBubble = document.createElement("div");
     typingBubble.className = "chat-bubble incoming";
-    typingBubble.innerHTML = `<span class="sender-name">مساعد الاستقبال الرقمي</span><p><i>يكتب الآن...</i></p>`;
+    typingBubble.innerHTML = `<span class="sender-name">مساعد خدمة العملاء LibyAI</span><p><i>يكتب الآن...</i></p>`;
     patientMessages.appendChild(typingBubble);
     patientMessages.scrollTop = patientMessages.scrollHeight;
 
     const patientSubmitBtn = patientForm.querySelector('button[type="submit"]');
     if (patientSubmitBtn) patientSubmitBtn.disabled = true;
 
+    // Demo sender id: a fictional Messenger PSID on Messenger, a
+    // fictional phone on WhatsApp. Both are demo-only placeholders.
+    const demoSender = currentChannel === "messenger" ? "demo_psid_1000001" : "0910000000";
+
     try {
-      const res = await fetch("/api/simulator/patient-message", {
+      const res = await fetch("/api/simulator/customer-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: "0910000000", message: msg })
+        body: JSON.stringify({ sender: demoSender, message: msg, channel: currentChannel })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      appendBubble(patientMessages, data.reply, "incoming", "مساعد الاستقبال الرقمي", true);
+      appendBubble(patientMessages, data.reply, "incoming", "مساعد خدمة العملاء LibyAI", true);
     } catch (err) {
-      console.error("Error posting patient message:", err);
-      appendBubble(patientMessages, "⚠️ تعذر الاتصال بالخادم أو الرد في الوقت المحدد. يرجى المحاولة بعد قليل.", "incoming", "مساعد الاستقبال الرقمي", true);
+      console.error("Error posting customer message:", err);
+      appendBubble(patientMessages, "⚠️ تعذر الاتصال بالخادم أو الرد في الوقت المحدد. يرجى المحاولة بعد قليل.", "incoming", "مساعد خدمة العملاء LibyAI", true);
     } finally {
       typingBubble.remove();
       if (patientSubmitBtn) patientSubmitBtn.disabled = false;

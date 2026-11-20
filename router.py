@@ -2,11 +2,17 @@
 LibyAI Central Router (`router.py`)
 
 Central message coordinator:
-- Distinguishes 1:1 patient inquiries vs. WhatsApp Staff Admin Group messages.
+- Distinguishes 1:1 customer inquiries vs. Staff Admin Group messages.
 - Routes group updates tagged with `@Bot` to `admin_service`.
-- Dispatches 1:1 patient messages through fast-path Triage Level 1 (emergencies bypass debouncer).
-- Feeds routine patient inquiries into the async 2.5s debouncer buffer before executing `patient_service`.
-- Provides FastAPI webhook endpoints compatible with Meta WhatsApp Cloud API and local simulators.
+- Dispatches 1:1 customer messages through the fast-path guardrail
+  interceptor (medical Level 1 emergencies bypass the debouncer).
+- Feeds routine customer inquiries into the async 2.5s debouncer buffer
+  before executing `customer_service`.
+- Provides the LEGACY FastAPI webhook endpoints (/whatsapp/webhook,
+  /whatsapp/message). New integrations should use the channel routers
+  in app/channels/ (/webhook/messenger primary, /webhook/whatsapp
+  secondary). The legacy endpoints are kept for backward compatibility
+  and enforce the same fail-closed HMAC verification in production.
 """
 
 import asyncio
@@ -17,10 +23,10 @@ from fastapi import APIRouter, Request, Response, HTTPException, Query
 from pydantic import BaseModel, Field
 
 import db
-import triage
+import guardrails
 import admin_service
-import patient_service
-from debouncer import patient_debouncer
+import customer_service
+from debouncer import message_debouncer
 from app.config import settings
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
@@ -33,51 +39,64 @@ class DirectMessagePayload(BaseModel):
     group_id: Optional[str] = Field(default=None, description="Group ID if applicable")
 
 
-async def _async_patient_callback(phone_number: str, cohesive_query: str) -> str:
-    """Async wrapper executing the patient service within a thread pool."""
-    return await asyncio.to_thread(patient_service.handle_patient_query, phone_number, cohesive_query)
-
-
 async def dispatch_message(
     sender: str,
     message: str,
     is_group: bool = False,
-    group_id: Optional[str] = None
+    group_id: Optional[str] = None,
+    channel: str = "whatsapp",
 ) -> Optional[str]:
     """
     Core business dispatch function:
     1. Directs Staff Group messages -> `admin_service` (via threadpool to prevent event loop blocking).
-    2. Directs 1:1 Patient messages:
-       - Immediate Emergency Red Flag bypass (zero delay).
-       - Enters debouncer (2.5s window) -> `patient_service`.
+    2. Directs 1:1 Customer messages:
+       - Immediate Emergency Red Flag bypass (zero delay, medical
+         sectors only).
+       - Enters debouncer (2.5s window) -> `customer_service`.
     """
     clean_text = message.strip()
     if not clean_text:
         return None
 
-    # Path A: WhatsApp Staff Admin Group Message (non-blocking thread pool)
+    # Path A: Staff Admin Group Message (non-blocking thread pool)
     if is_group:
         return await asyncio.to_thread(
             admin_service.handle_admin_group_message,
             sender_phone=sender,
             raw_message=clean_text,
-            group_id=group_id
+            group_id=group_id,
+            channel=channel,
         )
 
-    # Path B: 1:1 Patient Message
-    # Fast Triage Interceptor for acute emergencies (no debounce delay for critical red flags)
-    clinic_info = db.get_clinic_info()
-    fast_triage = triage.evaluate_triage(clean_text, clinic_info)
-    if fast_triage.is_emergency and fast_triage.immediate_response:
-        db.save_conversation_turn(sender, "user", clean_text)
-        db.save_conversation_turn(sender, "model", fast_triage.immediate_response)
-        return fast_triage.immediate_response
+    # Path B: 1:1 Customer Message
+    # Fast guardrail interceptor for acute emergencies (no debounce delay
+    # for critical red flags; medical sectors only).
+    business_profile = db.get_business_profile()
+    fast_guard = guardrails.evaluate_guardrails(clean_text, business_profile)
+    if fast_guard.is_emergency and fast_guard.immediate_response:
+        db.save_conversation_turn(sender, "user", clean_text, channel=channel)
+        db.save_conversation_turn(sender, "model", fast_guard.immediate_response, channel=channel)
+        return fast_guard.immediate_response
+
+    async def _async_customer_callback(_session_id: str, cohesive_query: str) -> str:
+        """Async wrapper executing the customer service in a thread pool.
+
+        The debouncer session id is namespaced per channel
+        ("whatsapp:<sender>"), so the callback uses the real sender id
+        captured from dispatch_message, not the session id.
+        """
+        return await asyncio.to_thread(
+            customer_service.handle_customer_query,
+            sender,
+            cohesive_query,
+            channel,
+        )
 
     # Pass routine inquiry through asynchronous sliding debouncer
-    return await patient_debouncer.enqueue(
-        session_id=sender,
+    return await message_debouncer.enqueue(
+        session_id=f"{channel}:{sender}",
         message=clean_text,
-        processor_callback=_async_patient_callback
+        processor_callback=_async_customer_callback,
     )
 
 

@@ -18,9 +18,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Compile all Python files
-        run: python -m compileall -q app db.py admin_service.py patient_service.py router.py job_queue.py simulator.py run.py
+        run: python -m compileall -q app db.py admin_service.py customer_service.py patient_service.py guardrails.py triage.py router.py job_queue.py debouncer.py seed_demo.py migrate_schema.py simulator.py run.py
       - name: Run test suites
-        run: python -m pytest -q test_system.py test_system_integrity.py test_generic_multi_facility.py test_real_flow.py test_layer_authority.py test_security_regression.py test_sender_phone.py test_model_config.py
+        run: python -m pytest -q test_system.py test_system_integrity.py test_generic_multi_facility.py test_real_flow.py test_layer_authority.py test_security_regression.py test_sender_phone.py test_model_config.py test_channels.py test_multisector.py test_legacy_shims.py
 
   docker:
     runs-on: ubuntu-latest

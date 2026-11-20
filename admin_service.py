@@ -54,15 +54,20 @@ if GEMINI_KEY:
 
 
 class AdminUpdateIntent(BaseModel):
-    is_valid_update: bool = Field(description="True if this is an actionable directive to modify doctor schedule, status, or pricing")
+    is_valid_update: bool = Field(description="True if this is an actionable directive to modify a doctor, service, catalog item, resource, or business info")
     is_ambiguous: bool = Field(description="True if the request lacks a clear doctor name, specialty, or item")
     ambiguity_reason: Optional[str] = Field(default=None, description="Explanation why the request is ambiguous if applicable")
-    action: str = Field(description="DOCTOR_STATUS_UPDATE, UPDATE_FEE, UPDATE_SERVICE_PRICE, CHATTER, UNKNOWN")
+    action: str = Field(description="DOCTOR_STATUS_UPDATE, UPDATE_FEE, UPDATE_SERVICE_PRICE, UPDATE_CATALOG_PRICE, UPDATE_CATALOG_AVAILABILITY, UPDATE_WORKING_HOURS, UPDATE_BUSINESS_POLICY, UPDATE_RESOURCE_SCHEDULE, CHATTER, UNKNOWN")
     doctor_identifier: Optional[str] = Field(default=None, description="Doctor name or specialty (e.g. عظام, علي, فاطمة)")
     new_status: Optional[str] = Field(default=None, description="available, apologized, delayed, left, arrived, booking_closed")
     daily_note: Optional[str] = Field(default="", description="Specific note (e.g. 'تأخير للساعة 5', 'اعتذر لظرف طارئ')")
     new_price: Optional[float] = Field(default=None, description="Updated price or fee in Libyan Dinars if applicable")
     service_identifier: Optional[str] = Field(default=None, description="Name of service or lab test if updating service price")
+    item_identifier: Optional[str] = Field(default=None, description="Name of catalog item (product/service/menu item) if updating it")
+    resource_identifier: Optional[str] = Field(default=None, description="Name of resource (technician/specialist) if updating its schedule")
+    new_availability: Optional[bool] = Field(default=None, description="True when an item becomes available, False when out of stock")
+    new_working_hours: Optional[str] = Field(default=None, description="New working hours text when updating business hours")
+    new_policy_text: Optional[str] = Field(default=None, description="New announcement/policy text when updating business policies")
 
 
 STATUS_ARABIC_MAP = {
@@ -75,24 +80,35 @@ STATUS_ARABIC_MAP = {
 }
 
 
-def fallback_admin_parser(clean_text: str) -> AdminUpdateIntent:
-    """Deterministic fallback NLP parser for common staff updates in Libyan dialect."""
-    t = clean_text.strip()
-    
-    # 1. Ambiguity detection: check if update is mentioned with NO doctor name or specialty
-    update_words = ["اعتذر", "مش جاي", "تأخير", "حيبدأ", "روح", "غادر", "وصل", "كشفية", "سعر", "اكتفوا", "قفلوا"]
-    has_update_word = any(w in t for w in update_words)
-    
-    matched_doc = db.find_doctor_fuzzy(name_query=t, specialty_query=t)
-    matched_svc = db.find_service_fuzzy(t)
+def fallback_admin_parser(clean_text: str, db_path: str = db.DB_PATH) -> AdminUpdateIntent:
+    """Deterministic fallback NLP parser for common staff updates in Libyan dialect.
 
-    if has_update_word and not matched_doc and not matched_svc:
+    Matching order is deliberate: doctor paths first, then legacy services,
+    then the generic catalog, then resources, then business hours/policy.
+    That order preserves the clinic behaviour exactly (a lab-test price
+    still updates the services table), while retail/restaurant businesses
+    — which have no doctors or lab services — reach the catalog paths.
+    """
+    t = clean_text.strip()
+
+    # 1. Ambiguity detection: check if update is mentioned with NO doctor,
+    # service, catalog item, or resource matched.
+    update_words = ["اعتذر", "مش جاي", "تأخير", "حيبدأ", "روح", "غادر", "وصل", "كشفية", "سعر", "اكتفوا", "قفلوا",
+                    "متوفر", "نفذ", "خلص", "مافيش", "غير متوفر", "دوام", "ساعات العمل", "إعلان", "تنبيه"]
+    has_update_word = any(w in t for w in update_words)
+
+    matched_doc = db.find_doctor_fuzzy(name_query=t, specialty_query=t, db_path=db_path)
+    matched_svc = db.find_service_fuzzy(t, db_path=db_path)
+    matched_item = db.find_catalog_item_fuzzy(t, db_path=db_path)
+    matched_resource = db.find_resource_fuzzy(t, db_path=db_path)
+
+    if has_update_word and not matched_doc and not matched_svc and not matched_item and not matched_resource:
         # Check if generic words like "الدكتور" or "الدكتورة" are present without name/specialty
-        if any(w in t for w in ["الدكتور", "الدكتورة", "الطبيب", "العيادة"]):
+        if any(w in t for w in ["الدكتور", "الدكتورة", "الطبيب", "العيادة", "المنتج", "الصنف", "الخدمة", "الصنف"]):
             return AdminUpdateIntent(
                 is_valid_update=False,
                 is_ambiguous=True,
-                ambiguity_reason="لم يتم تحديد اسم الطبيب أو التخصص بوضوح",
+                ambiguity_reason="لم يتم تحديد اسم الطبيب أو التخصص أو الصنف بوضوح",
                 action="UNKNOWN",
                 doctor_identifier=None
             )
@@ -208,6 +224,74 @@ def fallback_admin_parser(clean_text: str) -> AdminUpdateIntent:
                 new_price=float(num_match.group(1))
             )
 
+    # 4. Catalog item updates (any sector): price or availability.
+    if matched_item:
+        item_name = matched_item["name"]
+        # Availability / stock toggle
+        if any(w in t for w in ["نفذ", "نفذت", "خلص", "خلصت", "مافيش", "غير متوفر", "انتهى", "انتهت", "معدوم"]):
+            return AdminUpdateIntent(
+                is_valid_update=True,
+                is_ambiguous=False,
+                action="UPDATE_CATALOG_AVAILABILITY",
+                item_identifier=item_name,
+                new_availability=False,
+                daily_note="الصنف غير متوفر حالياً (نفد من المخزون)"
+            )
+        if any(w in t for w in ["متوفر", "متوفرة", "متاح", "وصلت", "وصل", "رجع متوفر", "توفر", "موجود"]):
+            return AdminUpdateIntent(
+                is_valid_update=True,
+                is_ambiguous=False,
+                action="UPDATE_CATALOG_AVAILABILITY",
+                item_identifier=item_name,
+                new_availability=True,
+                daily_note="الصنف متوفر الآن"
+            )
+        # Price update. The regex captures an optional minus sign so a
+        # negative price is parsed and then rejected by the bounds check
+        # in the handler, instead of silently becoming a positive price.
+        if any(w in t for w in ["سعر", "صارت", "صار", "دينار", "بكم"]):
+            num_match = re.search(r"(-?\d+(?:\.\d+)?)", t)
+            if num_match:
+                return AdminUpdateIntent(
+                    is_valid_update=True,
+                    is_ambiguous=False,
+                    action="UPDATE_CATALOG_PRICE",
+                    item_identifier=item_name,
+                    new_price=float(num_match.group(1))
+                )
+
+    # 5. Resource schedule update (technicians / specialists).
+    if matched_resource and any(w in t for w in ["دوام", "جدول", "موعد", "ساعات", "متاح", "مشغول", "إجازة", "اجازة"]):
+        return AdminUpdateIntent(
+            is_valid_update=True,
+            is_ambiguous=False,
+            action="UPDATE_RESOURCE_SCHEDULE",
+            resource_identifier=matched_resource["name"],
+            daily_note=t,
+        )
+
+    # 6. Working hours update.
+    if any(w in t for w in ["ساعات العمل", "مواعيد العمل", "ساعات الدوام", "اوقات العمل", "أوقات العمل"]):
+        hours_text = re.sub(r"^(ساعات العمل|مواعيد العمل|ساعات الدوام|اوقات العمل|أوقات العمل)\s*(صارت|صار|:)?\s*", "", t).strip()
+        if hours_text:
+            return AdminUpdateIntent(
+                is_valid_update=True,
+                is_ambiguous=False,
+                action="UPDATE_WORKING_HOURS",
+                new_working_hours=hours_text,
+            )
+
+    # 7. Announcement / policy update.
+    if any(w in t for w in ["إعلان", "اعلان", "تنبيه", "سياسة جديدة", "ملاحظة مهمة"]):
+        policy_text = re.sub(r"^(إعلان|اعلان|تنبيه|سياسة جديدة|ملاحظة مهمة)\s*:?\s*", "", t).strip()
+        if policy_text:
+            return AdminUpdateIntent(
+                is_valid_update=True,
+                is_ambiguous=False,
+                action="UPDATE_BUSINESS_POLICY",
+                new_policy_text=policy_text,
+            )
+
     return AdminUpdateIntent(
         is_valid_update=False,
         is_ambiguous=False,
@@ -215,17 +299,22 @@ def fallback_admin_parser(clean_text: str) -> AdminUpdateIntent:
     )
 
 
-def parse_staff_message_with_ai(clean_text: str) -> AdminUpdateIntent:
+def parse_staff_message_with_ai(clean_text: str, db_path: str = db.DB_PATH) -> AdminUpdateIntent:
     """Uses Gemini Structured Outputs to classify and extract admin intent with deep Libyan dialect understanding."""
     global gemini_client
     if not gemini_client:
-        return fallback_admin_parser(clean_text)
+        return fallback_admin_parser(clean_text, db_path=db_path)
 
-    doctors = db.get_all_doctors()
+    doctors = db.get_all_doctors(db_path=db_path)
     doctors_list_str = "\n".join([f"- {d['name']} ({d['specialty']}) | حالته الحالية: {d['status']} | الكشفية: {d['consultation_fee']} | ID: {d['id']}" for d in doctors])
+    catalog = db.get_catalog_items(db_path=db_path)
+    catalog_list_str = "\n".join([f"- {c['name']} ({c.get('category') or 'عام'}) | السعر: {c['price_lyd']} د.ل | متوفر: {'نعم' if c.get('is_available') else 'لا'} | ID: {c['id']}" for c in catalog]) or "لا توجد أصناف في الكتالوج."
+    resources = db.get_resources(db_path=db_path)
+    resources_list_str = "\n".join([f"- {r['name']} ({r.get('role_or_specialty') or ''}) | الجدول: {r.get('schedule') or ''} | ID: {r['id']}" for r in resources]) or "لا توجد موارد مسجلة."
+    profile = db.get_business_profile(db_path=db_path)
     time_ctx = get_libya_datetime_context()
 
-    prompt = f"""أنت مساعد ذكي يفهم اللهجة الليبية بطلاقة تامة. مهمتك فهم رسائل موظفي الاستقبال في مصحة ليبية واستخراج القصد الحقيقي من كلامهم حتى لو كان عامياً أو مختصراً.
+    prompt = f"""أنت مساعد ذكي يفهم اللهجة الليبية بطلاقة تامة. مهمتك فهم رسائل موظفي نشاط تجاري ليبي ({profile.get('name')}، قطاع {profile.get('sector')}) واستخراج القصد الحقيقي من كلامهم حتى لو كان عامياً أو مختصراً.
 
 📩 رسالة الموظف:
 "{clean_text}"
@@ -234,6 +323,12 @@ def parse_staff_message_with_ai(clean_text: str) -> AdminUpdateIntent:
 
 👨‍⚕️ أطباء المصحة المسجلين حالياً:
 {doctors_list_str}
+
+🛍️ أصناف الكتالوج المسجلة حالياً (منتجات/خدمات/أصناف قائمة):
+{catalog_list_str}
+
+🧑‍🔧 الموارد المسجلة حالياً (فنيون/متخصصون):
+{resources_list_str}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 📖 دليل فهم اللهجة الليبية والتعبيرات الشائعة:
@@ -260,6 +355,20 @@ def parse_staff_message_with_ai(clean_text: str) -> AdminUpdateIntent:
 💰 عبارات تعني "تغيير السعر":
 كشفيته صارت...، عدلوا الكشفية لـ...، السعر صار...، غيروا الكشفية، الكشفية الجديدة...
 
+🛍️ عبارات تعني تحديث صنف في الكتالوج (أي قطاع):
+- سعر الصنف صار... (action = UPDATE_CATALOG_PRICE مع item_identifier و new_price)
+- الصنف نفذ / خلص / مافيش (action = UPDATE_CATALOG_AVAILABILITY مع new_availability = false)
+- الصنف متوفر / وصل / رجع متوفر (action = UPDATE_CATALOG_AVAILABILITY مع new_availability = true)
+
+🕐 عبارات تعني تحديث ساعات العمل:
+ساعات العمل صارت...، مواعيد العمل تغيرت... (action = UPDATE_WORKING_HOURS مع new_working_hours)
+
+📢 عبارات تعني إعلان أو سياسة جديدة:
+إعلان: ...، تنبيه: ... (action = UPDATE_BUSINESS_POLICY مع new_policy_text)
+
+🧑‍🔧 عبارات تعني تحديث جدول فني/متخصص:
+دوام الفني صار...، جدول المتخصص تغير... (action = UPDATE_RESOURCE_SCHEDULE مع resource_identifier)
+
 ━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ قواعد حاسمة:
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -283,12 +392,17 @@ def parse_staff_message_with_ai(clean_text: str) -> AdminUpdateIntent:
   "is_valid_update": true/false,
   "is_ambiguous": true/false,
   "ambiguity_reason": "السبب أو null",
-  "action": "DOCTOR_STATUS_UPDATE أو UPDATE_FEE أو UPDATE_SERVICE_PRICE أو CHATTER أو UNKNOWN",
+  "action": "DOCTOR_STATUS_UPDATE أو UPDATE_FEE أو UPDATE_SERVICE_PRICE أو UPDATE_CATALOG_PRICE أو UPDATE_CATALOG_AVAILABILITY أو UPDATE_WORKING_HOURS أو UPDATE_BUSINESS_POLICY أو UPDATE_RESOURCE_SCHEDULE أو CHATTER أو UNKNOWN",
   "doctor_identifier": "اسم أو تخصص الطبيب من القائمة أو null",
   "new_status": "available/apologized/delayed/left/arrived/booking_closed أو null",
   "daily_note": "ملاحظة توضيحية أو فارغ",
   "new_price": null أو رقم,
-  "service_identifier": "اسم الخدمة أو null"
+  "service_identifier": "اسم الخدمة أو null",
+  "item_identifier": "اسم الصنف من الكتالوج أو null",
+  "resource_identifier": "اسم المورد أو null",
+  "new_availability": true/false أو null,
+  "new_working_hours": "ساعات العمل الجديدة أو null",
+  "new_policy_text": "نص الإعلان/السياسة أو null"
 }}"""
 
     for model_name in MODELS_CASCADE:
@@ -322,12 +436,15 @@ def handle_admin_group_message(
     job_id: Optional[int] = None,
     lease_token: Optional[str] = None,
     worker_id: Optional[str] = None,
-    db_path: str = db.DB_PATH
+    db_path: str = db.DB_PATH,
+    channel: str = "whatsapp"
 ) -> Optional[str]:
     """
-    Main entrypoint for WhatsApp Staff Group processing.
+    Main entrypoint for Staff Group processing (WhatsApp or Messenger).
     Ensures message is tagged with `@Bot`, checks for ambiguity, performs atomic mutations,
-    and returns an explicit verification receipt.
+    and returns an explicit verification receipt. Staff authorization is by
+    phone number on WhatsApp/simulator and by exact Messenger PSID on
+    Messenger (see db.is_sender_authorized).
     """
     # 0. Idempotency Check: if this exact job was already committed, return stored receipt
     if job_id is not None:
@@ -348,7 +465,7 @@ def handle_admin_group_message(
 
     # Handle Management Commands (@إدارة)
     if re.search(r"@(?:إدارة|ادارة|إداره)", raw_message):
-        is_auth, staff_role, staff_name = db.is_staff_authorized(sender_phone, db_path)
+        is_auth, staff_role, staff_name = db.is_sender_authorized(sender_phone, channel=channel, db_path=db_path)
         if not is_auth or staff_role not in ("owner", "admin"):
             return "⛔ *غير مصرح:* عذراً، أوامر الإدارة (@إدارة) مخصصة فقط لمدير المستشفى أو المشرف الإداري المعتمد."
 
@@ -402,13 +519,13 @@ def handle_admin_group_message(
         return "👋 أهلاً بك زميلي في فريق الاستقبال. لتعديل جدول أو حالة طبيب، اكتب مثلاً:\n`@تحديث دكتور العظام يوسف العربي اعتذر اليوم`"
 
     # 2. Verify sender authorization
-    is_auth, staff_role, staff_name = db.is_staff_authorized(sender_phone, db_path)
+    is_auth, staff_role, staff_name = db.is_sender_authorized(sender_phone, channel=channel, db_path=db_path)
     if not is_auth:
         facility_name = db.get_facility_profile(db_path).get("name", "المصحة")
         return f"⛔ *غير مصرح:* هذا الرقم غير مسجل ضمن أرقام موظفي {facility_name} المصرح لهم بالتعديل."
 
     # 3. Parse intent via Gemini / Fallback
-    intent = parse_staff_message_with_ai(clean_message)
+    intent = parse_staff_message_with_ai(clean_message, db_path=db_path)
 
     # 3. Handle Ambiguity (Fail-Safe)
     if intent.is_ambiguous:
@@ -426,7 +543,8 @@ def handle_admin_group_message(
     if intent.action == "CHATTER" or not intent.is_valid_update:
         return (
             "ℹ️ تم استلام رسالتك ولكن لم يتم التعرف على أمر تحديث مباشر.\n"
-            "لتحديث الجداول، يمكنك ذكر اسم الطبيب أو التخصص متبوعاً بحالته (اعتذار، تأخير، مغادرة، أو تعديل سعر)."
+            "لتحديث الجداول، يمكنك ذكر اسم الطبيب أو التخصص متبوعاً بحالته (اعتذار، تأخير، مغادرة، أو تعديل سعر)، "
+            "أو اسم الصنف متبوعاً بسعره الجديد أو حالة توفره."
         )
 
     time_ctx = get_libya_datetime_context()
@@ -588,4 +706,156 @@ def handle_admin_group_message(
         )
         return final_receipt
 
-    return "ℹ️ لم يتم التعرف على تفاصيل التعديل بدقة. يرجى مراجعة الصياغة والتأكد من ذكر اسم الطبيب أو الخدمة."
+    # 8. Handle Catalog Item Price Update (any sector)
+    if intent.action == "UPDATE_CATALOG_PRICE" and intent.item_identifier and intent.new_price is not None:
+        if intent.new_price < 0 or intent.new_price > 100000:
+            return "⚠️ *تعذر التحديث:* سعر الصنف غير منطقي. يرجى تحديد سعر صحيح بالدينار الليبي."
+
+        item = db.find_catalog_item_fuzzy(intent.item_identifier, db_path=db_path)
+        if not item:
+            return f"⚠️ *تعذر التحديث:* لم يتم العثور على صنف باسم `{intent.item_identifier}` في الكتالوج."
+
+        receipt = (
+            "✅ *إيصال تعديل سعر الصنف* ✅\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🛍️ *الصنف:* {item['name']}\n"
+            f"💰 *السعر السابق:* {item.get('price_lyd')} د.ل\n"
+            f"💵 *السعر الجديد:* *{intent.new_price} د.ل*\n"
+            f"⏰ *وقت التحديث:* {time_ctx['time_arabic']}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "_انعكس السعر الجديد في النظام فورياً._"
+        )
+
+        already_applied, status_before, status_after, final_receipt = db.apply_admin_mutation_atomic(
+            mutation_type="catalog_item",
+            target_id=item["id"],
+            mutation_fields={"price_lyd": intent.new_price},
+            audit_sender=sender_phone,
+            raw_message=raw_message,
+            confirmation_text=receipt,
+            job_id=job_id,
+            lease_token=lease_token,
+            worker_id=worker_id,
+            db_path=db_path
+        )
+        return final_receipt
+
+    # 9. Handle Catalog Item Availability Update (any sector)
+    if intent.action == "UPDATE_CATALOG_AVAILABILITY" and intent.item_identifier and intent.new_availability is not None:
+        item = db.find_catalog_item_fuzzy(intent.item_identifier, db_path=db_path)
+        if not item:
+            return f"⚠️ *تعذر التحديث:* لم يتم العثور على صنف باسم `{intent.item_identifier}` في الكتالوج."
+
+        new_state = "متوفر" if intent.new_availability else "غير متوفر"
+        receipt = (
+            "✅ *إيصال تعديل توفر الصنف* ✅\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🛍️ *الصنف:* {item['name']}\n"
+            f"📦 *الحالة الجديدة:* *{new_state}*\n"
+            f"⏰ *وقت التحديث:* {time_ctx['time_arabic']}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "_انعكست الحالة الجديدة في النظام فورياً._"
+        )
+
+        already_applied, status_before, status_after, final_receipt = db.apply_admin_mutation_atomic(
+            mutation_type="catalog_item",
+            target_id=item["id"],
+            mutation_fields={"is_available": intent.new_availability},
+            audit_sender=sender_phone,
+            raw_message=raw_message,
+            confirmation_text=receipt,
+            job_id=job_id,
+            lease_token=lease_token,
+            worker_id=worker_id,
+            db_path=db_path
+        )
+        return final_receipt
+
+    # 10. Handle Working Hours Update (any sector)
+    if intent.action == "UPDATE_WORKING_HOURS" and intent.new_working_hours:
+        profile = db.get_business_profile(db_path=db_path)
+        receipt = (
+            "✅ *إيصال تعديل ساعات العمل* ✅\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏪 *النشاط:* {profile.get('name')}\n"
+            f"🕐 *ساعات العمل الجديدة:* *{intent.new_working_hours}*\n"
+            f"⏰ *وقت التحديث:* {time_ctx['time_arabic']}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "_انعكست ساعات العمل الجديدة في النظام فورياً._"
+        )
+
+        already_applied, status_before, status_after, final_receipt = db.apply_admin_mutation_atomic(
+            mutation_type="business_info",
+            target_id=1,
+            mutation_fields={"working_hours": intent.new_working_hours},
+            audit_sender=sender_phone,
+            raw_message=raw_message,
+            confirmation_text=receipt,
+            job_id=job_id,
+            lease_token=lease_token,
+            worker_id=worker_id,
+            db_path=db_path
+        )
+        return final_receipt
+
+    # 11. Handle Business Policy / Announcement Update (any sector)
+    if intent.action == "UPDATE_BUSINESS_POLICY" and intent.new_policy_text:
+        profile = db.get_business_profile(db_path=db_path)
+        receipt = (
+            "✅ *إيصال تعديل الإعلان / السياسة* ✅\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏪 *النشاط:* {profile.get('name')}\n"
+            f"📢 *النص الجديد:* {intent.new_policy_text}\n"
+            f"⏰ *وقت التحديث:* {time_ctx['time_arabic']}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "_انعكس الإعلان الجديد في النظام فورياً._"
+        )
+
+        already_applied, status_before, status_after, final_receipt = db.apply_admin_mutation_atomic(
+            mutation_type="business_info",
+            target_id=1,
+            mutation_fields={"policy_notes": intent.new_policy_text},
+            audit_sender=sender_phone,
+            raw_message=raw_message,
+            confirmation_text=receipt,
+            job_id=job_id,
+            lease_token=lease_token,
+            worker_id=worker_id,
+            db_path=db_path
+        )
+        return final_receipt
+
+    # 12. Handle Resource Schedule Update (any sector)
+    if intent.action == "UPDATE_RESOURCE_SCHEDULE" and intent.resource_identifier:
+        resource = db.find_resource_fuzzy(intent.resource_identifier, db_path=db_path)
+        if not resource:
+            return f"⚠️ *تعذر التحديث:* لم يتم العثور على فني/متخصص باسم `{intent.resource_identifier}`."
+        new_schedule = (intent.daily_note or intent.new_working_hours or "").strip()
+        if not new_schedule:
+            return "⚠️ *تعذر التحديث:* لم يتم تحديد الجدول الجديد."
+
+        receipt = (
+            "✅ *إيصال تعديل جدول المورد* ✅\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🧑‍🔧 *المورد:* {resource['name']}\n"
+            f"📅 *الجدول الجديد:* {new_schedule}\n"
+            f"⏰ *وقت التحديث:* {time_ctx['time_arabic']}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "_انعكس الجدول الجديد في النظام فورياً._"
+        )
+
+        already_applied, status_before, status_after, final_receipt = db.apply_admin_mutation_atomic(
+            mutation_type="resource",
+            target_id=resource["id"],
+            mutation_fields={"schedule": new_schedule},
+            audit_sender=sender_phone,
+            raw_message=raw_message,
+            confirmation_text=receipt,
+            job_id=job_id,
+            lease_token=lease_token,
+            worker_id=worker_id,
+            db_path=db_path
+        )
+        return final_receipt
+
+    return "ℹ️ لم يتم التعرف على تفاصيل التعديل بدقة. يرجى مراجعة الصياغة والتأكد من ذكر اسم الطبيب أو الخدمة أو الصنف."

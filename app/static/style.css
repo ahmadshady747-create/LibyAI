@@ -1013,3 +1013,40 @@ body {
 }
 
 
+
+/* --- Pivot: channel switcher (Messenger / WhatsApp) --- */
+.channel-switcher {
+  display: inline-flex;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+.channel-btn {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.channel-btn.active {
+  background: #0084ff;
+  border-color: #0084ff;
+  color: #fff;
+}
+.channel-btn[data-channel="whatsapp"].active {
+  background: #25d366;
+  border-color: #25d366;
+}
+
+/* --- Pivot: business info panel --- */
+.business-info {
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+.business-info p {
+  margin: 0;
+}

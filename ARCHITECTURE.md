@@ -5,19 +5,59 @@ which one is authoritative for each job, so a future change does not
 silently build a second, diverging implementation. It is a statement of
 the current, tested reality — not a wish list.
 
+## Channels (Messenger-first pivot)
+
+- **Channel layer (`app/channels/`)** — one adapter per channel behind
+  the `ChannelAdapter` interface (`base.py`): `verify_webhook`,
+  `verify_signature`, `parse_incoming`, `send_text`. Messenger
+  (`messenger.py`) is PRIMARY, WhatsApp (`whatsapp.py`) is secondary
+  and optional. Both adapters share the fail-closed HMAC-SHA256
+  verification in `base.py` (`verify_hmac_sha256`), checked BEFORE the
+  body is parsed. Deduplication is `(channel, external_message_id)`,
+  not a bare WhatsApp wamid: the same external id on two channels is
+  two different messages. The legacy `provider` column is kept and
+  always holds the same value as `channel`.
+- Messenger parsing strictly ignores `is_echo` messages, delivery
+  receipts and read receipts, to prevent reply loops. Staff messages
+  are tagged `@Bot` at the webhook and routed to the admin path with
+  `group_id` `<channel>_staff`.
+- Staff authorization is channel-aware (`db.is_sender_authorized`):
+  phone numbers on WhatsApp/simulator (exact normalized match), exact
+  Messenger PSIDs on Messenger — PSIDs are never phone-normalized.
+
 ## The two layers
 
-- **Legacy layer (`db.py`, `admin_service.py`, `patient_service.py`,
+- **Legacy layer (`db.py`, `admin_service.py`, `customer_service.py`,
   `router.py`, `job_queue.py`)** — raw SQLite, dict rows, the tables
+  `business_info`, `catalog_items`, `resources`, `business_faqs`,
   `doctors`, `services`, `clinic_info`, `audit_logs`, `daily_overrides`,
   `message_jobs`, and the conversation tables. This layer owns:
   - all admin mutations and their atomicity (`apply_admin_mutation_atomic`
-    writes the doctors update, the daily override, the audit log, and the
-    job completion in one transaction);
-  - the message job queue and its leases;
-  - patient answers, including the triage fast path, the clinical-advice
-    refusal, and the offline fallback;
-  - staff authorization (`db.is_staff_authorized`, full-number matching).
+    writes the target update, the daily override (doctors only), the
+    audit log, and the job completion in one transaction);
+  - the message job queue and its leases (lease/retry semantics
+    unchanged by the pivot; only the dedup key was generalized);
+  - customer answers, including the guardrail fast path, the clinical-
+    advice refusal (medical sectors only), the commercial handoff, and
+    the offline fallback;
+  - staff authorization (`db.is_sender_authorized`, channel-aware;
+    `db.is_staff_authorized` remains the phone-number path).
+- **Business data model:** `business_info` (single row id=1) is the
+  source of truth for business identity, sector and policies; the
+  legacy `clinic_info` key-value table stays as the store for webhook
+  tokens and staff lists. The catalog view unions `catalog_items` with
+  the legacy `services` table (no data duplication, no divergence):
+  admin service-price updates stay on `services`, catalog updates on
+  `catalog_items`. The medical schedule path (doctors, emergency and
+  follow-up tables) is preserved for medical sectors only.
+- **Guardrails (`guardrails.py`)** — the policy engine. Safety order:
+  (1) medical Level 1 emergency (medical sectors only, bypasses the
+  debouncer and the LLM exactly as before), (2) commercial handoff
+  (all sectors), (3) medical Level 2 clinical-advice restriction
+  (medical sectors only), (4) routine. `triage.py`,
+  `patient_service.py` and `patient_processor.py` are thin
+  backward-compatible shims over `guardrails.py`, `customer_service.py`
+  and `customer_processor.py`; new code must import the new names.
 
 - **SQLModel layer (`app/database/models.py`, `app/services/db_service.py`)**
   — SQLModel objects over the same `doctors` and `services` tables, plus
@@ -36,26 +76,30 @@ the current, tested reality — not a wish list.
   except delegate to `admin_service.handle_admin_group_message`. The
   SQLModel mutation block that used to sit after that delegation was
   unreachable dead code and was removed in round 4.
-- Patient answers: `app/services/llm_service.py::generate_patient_response`
-  delegates to `patient_service.handle_patient_query`. The Gemini prompt
+- Customer answers: `app/services/llm_service.py::generate_customer_response`
+  delegates to `customer_service.handle_customer_query`
+  (`generate_patient_response` is a thin alias). The Gemini prompt
   block that used to sit after that delegation was unreachable dead code
-  and was removed in round 4. There is currently no live Gemini patient
+  and was removed in round 4. There is currently no live Gemini customer
   path; the live Gemini paths are admin-update parsing and data
   ingestion, both behind a configured key with a rule-based fallback.
-- Webhooks: the signed Meta webhook (`/webhook/whatsapp`,
-  `app/api/webhook.py`) is the production entry point. The legacy
-  webhook (`/whatsapp/webhook`, `router.py`) is legacy-only: it is
-  retained for the local simulator / direct-payload gateway path and
-  for backward compatibility with existing deployments. Both routes
-  enforce IDENTICAL fail-closed `X-Hub-Signature-256` verification in
-  production (see `SECURITY.md`): missing signature → 401, unconfigured
-  app secret → 403, invalid signature → 403, constant-time comparison,
-  and the signature is checked BEFORE the body is parsed or any
-  dispatch/mutation happens. The only intentional difference is that
-  the legacy route also accepts a simplified direct
-  `{sender, message}` JSON payload, and accepts unsigned payloads
-  only when `ENVIRONMENT` is not production (local development). New
-  integrations must use `/webhook/whatsapp`.
+- Webhooks: the signed Meta webhooks are the production entry points —
+  `/webhook/messenger` (primary, `app/channels/messenger.py`) and
+  `/webhook/whatsapp` (secondary, `app/api/webhook.py` via the
+  `WhatsAppAdapter`). The legacy webhook (`/whatsapp/webhook`,
+  `router.py`) is legacy-only: it is retained for the local simulator /
+  direct-payload gateway path and for backward compatibility with
+  existing deployments. All routes enforce IDENTICAL fail-closed
+  `X-Hub-Signature-256` verification (see `SECURITY.md`): missing
+  signature → 401, unconfigured app secret → 403, invalid signature →
+  403, constant-time comparison, and the signature is checked BEFORE
+  the body is parsed or any dispatch/mutation happens. The only
+  intentional difference is that the legacy route also accepts a
+  simplified direct `{sender, message}` JSON payload, and accepts
+  unsigned payloads only when `ENVIRONMENT` is not production (local
+  development). A webhook for a channel not in `ENABLED_CHANNELS`
+  returns 404. New integrations must use `/webhook/messenger` or
+  `/webhook/whatsapp`.
 
 ## Fixes from round 4 that belong here
 
@@ -88,5 +132,5 @@ the current, tested reality — not a wish list.
   simulator settings endpoint writes both; `db_service` config reads
   come from `clinic_info`. Do not read config from `clinic_config`
   directly without checking the mirror is still written.
-- The seed data describes a real facility. The repository must stay
-  private until that seed is audited (see `SECURITY.md`).
+- The seed data is fictional demo data only (see `SECURITY.md`); the
+  repository is public. Never commit real business data to it.

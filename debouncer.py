@@ -118,4 +118,6 @@ class MessageDebouncer:
 
 
 # Default global debouncer instance (2.5 seconds window)
-patient_debouncer = MessageDebouncer(window_seconds=2.5)
+message_debouncer = MessageDebouncer(window_seconds=2.5)
+# Backward-compatible alias: the same instance under the old name.
+patient_debouncer = message_debouncer

@@ -1,11 +1,12 @@
-"""sender_phone propagation regression tests (stabilization pass, task 4).
+"""sender_id propagation regression tests (stabilization pass, task 4;
+renamed to the customer pipeline by the Messenger-first pivot).
 
-process_patient_message(sender_phone, message_text) used to silently ignore
-sender_phone: llm_service.generate_patient_response called
+process_customer_message(sender_id, message_text) used to silently ignore
+sender_id: llm_service.generate_patient_response called
 patient_service.handle_patient_query with the hardcoded key
-"simulator_patient", so every patient's conversation history was stored
-under one shared key. These tests pin the fix: the sender's number is
-threaded through the whole patient pipeline.
+"simulator_patient", so every customer's conversation history was stored
+under one shared key. These tests pin the fix: the sender's id is
+threaded through the whole customer pipeline.
 """
 
 import os
@@ -14,18 +15,20 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.services import patient_processor
+from app.services import customer_processor
 
 
 def test_sender_phone_reaches_patient_handler():
     with patch(
-        "patient_service.handle_patient_query", return_value="ok"
+        "customer_service.handle_customer_query", return_value="ok"
     ) as mock_handle:
-        reply = patient_processor.process_patient_message(
+        reply = customer_processor.process_customer_message(
             "0917770001", "من دكتور العظام اليوم؟"
         )
     assert reply == "ok"
-    mock_handle.assert_called_once_with("0917770001", "من دكتور العظام اليوم؟")
+    mock_handle.assert_called_once_with(
+        "0917770001", "من دكتور العظام اليوم؟", channel="simulator"
+    )
 
 
 def test_distinct_senders_get_distinct_histories():
@@ -33,8 +36,8 @@ def test_distinct_senders_get_distinct_histories():
 
     phone_a = "0917000001"
     phone_b = "0917000002"
-    patient_processor.process_patient_message(phone_a, "من دكتور العظام اليوم؟")
-    patient_processor.process_patient_message(phone_b, "قداش كشف الباطنة؟")
+    customer_processor.process_customer_message(phone_a, "من دكتور العظام اليوم؟")
+    customer_processor.process_customer_message(phone_b, "قداش كشف الباطنة؟")
 
     # Only user turns are compared: assistant replies may legitimately
     # mention other specialties, but a patient's own words must never

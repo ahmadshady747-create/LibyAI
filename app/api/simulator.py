@@ -8,7 +8,7 @@ from app.services.time_utils import get_libya_datetime_context
 
 import db
 import admin_service
-import patient_service
+import customer_service
 
 router = APIRouter(prefix="/api/simulator", tags=["Simulator"])
 
@@ -69,6 +69,16 @@ check_simulator_write_access = check_simulator_admin_access
 class SimulatorMessageRequest(BaseModel):
     sender: str = "0920202020"
     message: str
+    channel: str = "messenger"
+
+
+class SimulatorAdminMessageRequest(BaseModel):
+    """Staff messages default to WhatsApp: staff authorization there is by
+    phone number, the established admin path. Messenger staff use PSIDs
+    and pass channel="messenger" explicitly (the UI switcher does)."""
+    sender: str = "0920202020"
+    message: str
+    channel: str = "whatsapp"
 
 
 class ClinicSettingsRequest(BaseModel):
@@ -88,7 +98,7 @@ class IngestRequest(BaseModel):
 
 
 @router.post("/admin-message")
-async def send_admin_simulation(req: SimulatorMessageRequest):
+async def send_admin_simulation(req: SimulatorAdminMessageRequest):
     """
     Simulates an authorized staff member sending a private 1:1 message on WhatsApp.
     Only authorized numbers can update clinic data.
@@ -100,15 +110,18 @@ async def send_admin_simulation(req: SimulatorMessageRequest):
             detail="⛔ تم تعطيل نقاط نهاية المحاكي في بيئة الإنتاج."
         )
 
-    info = db.get_clinic_info()
-    auth_str = info.get("authorized_phones") or info.get("authorized_staff_phones") or settings.AUTHORIZED_STAFF_PHONES
-    authorized = is_phone_authorized(req.sender, auth_str)
+    channel = (req.channel or "whatsapp").strip().lower()
+    if channel not in ("messenger", "whatsapp", "simulator"):
+        channel = "whatsapp"
+    # Channel-aware staff authorization: phone numbers on WhatsApp/
+    # simulator, exact Messenger PSIDs on Messenger.
+    authorized, _role, _name = db.is_sender_authorized(req.sender, channel=channel)
 
     if not authorized:
         return {
             "authorized": False,
             "ignored": True,
-            "reply": "⛔ [رفض الوصول]: هذا الرقم غير مسجل ضمن أرقام موظفي المصحة المصرح لهم بالتعديل. يمكنك إضافة هذا الرقم من زر 'إعدادات المصحة والمصرح لهم'.",
+            "reply": "⛔ [رفض الوصول]: هذا المرسل غير مسجل ضمن الموظفين المصرح لهم بالتعديل. يمكنك إضافة المرسل من زر 'إعدادات النشاط والمصرح لهم'.",
             "sender": req.sender,
             "message": req.message
         }
@@ -123,7 +136,8 @@ async def send_admin_simulation(req: SimulatorMessageRequest):
     reply = admin_service.handle_admin_group_message(
         sender_phone=req.sender,
         raw_message=tagged_msg,
-        group_id="simulator_staff"
+        group_id="simulator_staff",
+        channel=channel,
     )
 
     ignored = reply is None
@@ -141,30 +155,49 @@ async def send_admin_simulation(req: SimulatorMessageRequest):
 
 @router.post("/patient-message")
 async def send_patient_simulation(req: SimulatorMessageRequest):
-    """Simulates a patient sending a 1:1 inquiry message to the clinic."""
+    """Legacy alias: simulates a customer sending a 1:1 inquiry message.
+    Kept for backward compatibility; new clients should use
+    /customer-message."""
+    return await send_customer_simulation(req)
+
+
+@router.post("/customer-message")
+async def send_customer_simulation(req: SimulatorMessageRequest):
+    """Simulates a customer sending a 1:1 inquiry message to the business,
+    on the requested channel (default Messenger)."""
     if settings.ENVIRONMENT == "production" and not getattr(settings, "ENABLE_PROD_SIMULATOR", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="⛔ تم تعطيل نقاط نهاية المحاكي في بيئة الإنتاج."
         )
+    channel = (req.channel or "messenger").strip().lower()
+    if channel not in ("messenger", "whatsapp", "simulator"):
+        channel = "messenger"
     reply = await asyncio.to_thread(
-        patient_service.handle_patient_query,
+        customer_service.handle_customer_query,
         req.sender,
-        req.message
+        req.message,
+        channel,
     )
     return {
         "reply": reply,
         "sender": req.sender,
-        "message": req.message
+        "message": req.message,
+        "channel": channel,
     }
 
 
 @router.get("/state", dependencies=[Depends(check_simulator_admin_access)])
 async def get_system_state():
-    """Returns the full real-time database state for doctors, services, configs, and audit logs."""
+    """Returns the full real-time database state for the business profile,
+    catalog, resources, FAQs, doctors, services, configs, and audit logs."""
     doctors = db.get_all_doctors()
     services = db.get_all_services()
     configs = db.get_clinic_info()
+    business = db.get_business_profile()
+    catalog_items = db.get_catalog_view()
+    resources = db.get_resources()
+    faqs = db.get_business_faqs()
 
     clinic_name = configs.get("clinic_name") or configs.get("name") or settings.CLINIC_NAME
     auth_phones = configs.get("authorized_phones") or configs.get("authorized_staff_phones") or settings.AUTHORIZED_STAFF_PHONES
@@ -222,6 +255,10 @@ async def get_system_state():
         })
 
     return {
+        "business": business,
+        "catalog_items": catalog_items,
+        "resources": resources,
+        "faqs": faqs,
         "doctors": mapped_doctors,
         "services": mapped_services,
         "configs": {
@@ -262,6 +299,15 @@ async def update_settings(req: ClinicSettingsRequest):
     if req.facilities_info is not None:
         db.update_clinic_info_key("facilities_info", req.facilities_info)
 
+    # Sync the generic business_info row (source of truth for identity)
+    db.update_business_profile({
+        "name": req.clinic_name,
+        "address": req.address,
+        "escalation_phone": req.emergency_phone,
+        "support_phone": req.reception_phone,
+        "policy_notes": req.booking_policy,
+    })
+
     # Sync runtime settings
     settings.CLINIC_NAME = req.clinic_name
     settings.CLINIC_ADDRESS = req.address
@@ -300,13 +346,20 @@ async def update_settings(req: ClinicSettingsRequest):
 
 @router.post("/wipe-data", dependencies=[Depends(check_simulator_write_access)])
 async def wipe_data():
-    """Wipes all dummy doctors and services so the user can enter their real data completely."""
+    """Wipes all dummy doctors, services, catalog items, resources, FAQs and
+    conversation history so the user can enter their real data completely."""
     with db.get_db() as conn:
         conn.execute("DELETE FROM doctors;")
         conn.execute("DELETE FROM services;")
+        conn.execute("DELETE FROM catalog_items;")
+        conn.execute("DELETE FROM resources;")
+        conn.execute("DELETE FROM business_faqs;")
         conn.execute("DELETE FROM audit_logs;")
         conn.execute("DELETE FROM conversation_sessions;")
-    return {"status": "success", "message": "تم تفريغ كافة البيانات بنجاح. يمكنك الآن إدخال بيانات مصحتك الفعلية."}
+        conn.execute("DELETE FROM conversation_history;")
+        conn.execute("DELETE FROM incoming_messages;")
+        conn.execute("DELETE FROM message_jobs;")
+    return {"status": "success", "message": "تم تفريغ كافة البيانات بنجاح. يمكنك الآن إدخال بيانات نشاطك الفعلية."}
 
 
 @router.delete("/doctor/{doctor_id}", dependencies=[Depends(check_simulator_write_access)])
@@ -335,8 +388,14 @@ async def reset_database():
     with db.get_db() as conn:
         conn.execute("DELETE FROM doctors;")
         conn.execute("DELETE FROM services;")
+        conn.execute("DELETE FROM catalog_items;")
+        conn.execute("DELETE FROM resources;")
+        conn.execute("DELETE FROM business_faqs;")
         conn.execute("DELETE FROM audit_logs;")
         conn.execute("DELETE FROM conversation_sessions;")
+        conn.execute("DELETE FROM conversation_history;")
+        conn.execute("DELETE FROM incoming_messages;")
+        conn.execute("DELETE FROM message_jobs;")
     db.init_db()
     db.seed_default_data()
     return {"status": "success", "message": "تمت إعادة ضبط البيانات إلى الوضع الافتراضي بنجاح"}

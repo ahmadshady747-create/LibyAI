@@ -2,7 +2,7 @@
 pass, task 5).
 
 - settings.GEMINI_MODEL (app/config.py, default gemini-3.1-flash-lite,
-  same as .env.example) heads the patient_service model fallback chain.
+  same as .env.example) heads the customer_service model fallback chain.
 - The normalize_phone_digits docstring examples are correct.
 - The demo staff phone list is fictional and demo-only: it is active in
   development, but in production it authorizes nobody unless staff phones
@@ -17,15 +17,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def test_model_cascade_head_is_settings_model():
     from app.config import settings
-    import patient_service
+    import customer_service
 
-    assert patient_service.MODELS_CASCADE[0] == settings.GEMINI_MODEL
+    assert customer_service.MODELS_CASCADE[0] == settings.GEMINI_MODEL
 
 
 def test_model_cascade_has_no_duplicates():
-    import patient_service
+    import customer_service
 
-    cascade = patient_service.MODELS_CASCADE
+    cascade = customer_service.MODELS_CASCADE
     assert len(cascade) == len(set(cascade)), f"Duplicate models in cascade: {cascade}"
 
 
