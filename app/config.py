@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     )
     
     # Authorized Staff Phone numbers for Private 1:1 Updates (Comma-separated)
+    # DEMO-ONLY DEFAULT: these three numbers are fictional placeholders
+    # for local development and the simulator (they match the demo
+    # defaults in app/static/app.js and the demo seed). They are NEVER
+    # active in production unless staff phones are explicitly configured
+    # via the AUTHORIZED_STAFF_PHONES environment variable (or .env) —
+    # see is_phone_authorized, which fails closed in production when no
+    # explicit configuration exists. A real deployment MUST set this to
+    # the clinic's real authorized staff numbers.
     AUTHORIZED_STAFF_PHONES: str = "0920202020,0921111111,218912345678"
     BOT_TRIGGER_TAG: str = "@Bot"
     
@@ -82,7 +90,7 @@ def normalize_phone_digits(phone: str) -> str:
     leading zeroes, spaces, and punctuation.
     Example:
       '+218 91 234 5678' -> '912345678'
-      '0920202020' -> '912345678'
+      '0920202020' -> '920202020'
       '٠٩١٢٣٤٥٦٧٨' -> '912345678'
       '00218912345678' -> '912345678'
     """
@@ -120,8 +128,19 @@ def is_phone_authorized(phone: str, authorized_phones_str: Optional[str] = None)
     if not sender_core:
         return False
 
-    # Use database / runtime value if available
-    auth_source = authorized_phones_str if (authorized_phones_str is not None and authorized_phones_str.strip() != "") else settings.AUTHORIZED_STAFF_PHONES
+    # Use database / runtime value if available. When no database value
+    # is configured, the settings default applies — EXCEPT in production
+    # when staff phones were never explicitly configured: the settings
+    # default is a fictional demo-only list, and it must never authorize
+    # anyone in production. model_fields_set tells us whether the value
+    # came from the environment / .env / explicit init (configured) or
+    # from the hardcoded default (unconfigured).
+    if authorized_phones_str is not None and authorized_phones_str.strip() != "":
+        auth_source = authorized_phones_str
+    elif settings.ENVIRONMENT.strip().lower() == "production" and "AUTHORIZED_STAFF_PHONES" not in settings.model_fields_set:
+        return False
+    else:
+        auth_source = settings.AUTHORIZED_STAFF_PHONES
 
     # No wildcard support: a configured value of "*", "all", or similar used
     # to authorize every sender, so a single misconfiguration removed all

@@ -34,18 +34,36 @@ def test_full_pipeline():
     print(reply_before)
 
     print("\n>>> 4. Testing Admin Update with @Bot (Doctor Apology)...")
-    # Use the actual Thursday emergency orthopedics doctor from the current
-    # Al-Noor seed. The old message named a doctor who no longer exists in
-    # this seed, so fuzzy matching updated a different orthopedics doctor
-    # and the patient view (which shows the Thursday schedule) correctly
-    # kept showing the schedule doctor as available.
-    admin_msg = "@Bot دكتور العظام عبدالله ديهوم اعتذر اليوم ومش حيكون متواجد."
+    # Build the admin message from TODAY's emergency orthopedics doctor in
+    # the current Al-Noor demo seed: the patient view shows today's
+    # schedule, so the update must target the doctor who is on duty today.
+    # A hardcoded name breaks on days when that doctor is not scheduled.
+    from app.services.time_utils import get_libya_datetime_context
+    import db as _legacy_db
+
+    _day = get_libya_datetime_context()["day_name"]
+    _schedule = _legacy_db.get_daily_schedule(_day)
+    _ortho_today = [
+        row for row in _schedule.get("emergency_clinics", [])
+        if "عظام" in (row.get("department") or "")
+    ] or [
+        row for row in _schedule.get("followup_clinics", [])
+        if "عظام" in (row.get("department") or "")
+    ]
+    assert _ortho_today, f"No orthopedics doctor scheduled today ({_day}) in the demo seed"
+    _ortho_name = _ortho_today[0]["doctor_name"].replace("د.", "").strip()
+    admin_msg = f"@Bot دكتور العظام {_ortho_name} اعتذر اليوم ومش حيكون متواجد."
     # A group update sender must be a real authorized phone number, not a
     # display name: authorization is checked against staff phone numbers.
     # This number is the seeded test staff number in seed_demo.py.
     admin_reply = admin_processor.process_admin_group_message("0920202020", admin_msg)
     print("Admin Confirmation Reply:")
     print(admin_reply)
+    # The receipt must name the doctor we targeted: if the resolver picked
+    # a different orthopedics doctor, the patient view below would still
+    # show the schedule doctor as available and the sync check would fail
+    # for the wrong reason.
+    assert _ortho_name in admin_reply, f"Receipt did not name {_ortho_name}: {admin_reply[:200]}"
 
     print("\n>>> 5. Testing Patient Inquiry AFTER update (Instant sync verification)...")
     reply_after = patient_processor.process_patient_message("0910000000", "من متواجد اليوم في العظام؟")

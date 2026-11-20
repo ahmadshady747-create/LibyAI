@@ -25,6 +25,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const headerClinicTitle = document.getElementById("headerClinicTitle");
   const patientHeaderTitle = document.getElementById("patientHeaderTitle");
 
+  // DEMO-ONLY DEFAULT: fictional placeholder staff numbers for the local
+  // simulator, matching the AUTHORIZED_STAFF_PHONES default in
+  // app/config.py and the demo seed. They are never active in production
+  // unless staff phones are explicitly configured server-side.
   let currentAuthorizedPhones = "0920202020, 0921111111, 218912345678";
 
   function escapeHtml(text) {
@@ -512,7 +516,7 @@ document.addEventListener("DOMContentLoaded", () => {
     pasteSampleTable.addEventListener("click", () => {
       ingestRawText.value = `| اسم الطبيب | التخصص | المواعيد الأسبوعية | الكشفية | رقم العيادة |
 | د. سالم الورفلي | جراحة مسالك بولية وكلى | السبت والإثنين والأربعاء (من 3:30 إلى 7:30 مساءً) | 50 د.ل | عيادة 104 |
-| د. منى بن عيسى | نساء وولادة وتتبع حمل | الأحد والثلاثاء والخميس (من 10 صباحاً إلى 2 ظهراً) | 55 د.ل | عيادة 201 |
+| د. منى النور | نساء وولادة وتتبع حمل | الأحد والثلاثاء والخميس (من 10 صباحاً إلى 2 ظهراً) | 55 د.ل | عيادة 201 |
 | د. هشام الفيتوري | أنف وأذن وحنجرة | يومياً عدا الجمعة (من 5 إلى 9 مساءً) | 45 د.ل | عيادة 102 |
 | فحص سكر الدم العشوائي (RBS) | مختبر | متاح 24 ساعة - لا يشترط صيام | 10 د.ل | مختبر الدور الأرضي |
 | فحص وظائف الكبد الشامل LFT | مختبر | متاح 24 ساعة - يفضل الصيام 6 ساعات | 45 د.ل | المختبر الرئيسي |`;

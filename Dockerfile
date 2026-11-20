@@ -24,6 +24,8 @@ USER libyai
 
 EXPOSE 8000
 
-# LIBYAI_HOST must be set explicitly by the deployment (for example
-# 0.0.0.0 behind a reverse proxy); the default bind is localhost.
-CMD ["sh", "-c", "uvicorn app.main:app --host ${LIBYAI_HOST:-127.0.0.1} --port ${LIBYAI_PORT:-8000}"]
+# The container default bind is 0.0.0.0 so the service is reachable from
+# outside the container (a localhost bind inside a container answers only
+# the container itself). LIBYAI_HOST can still override it; local
+# development keeps 127.0.0.1 via app/config.py and .env.example.
+CMD ["sh", "-c", "uvicorn app.main:app --host ${LIBYAI_HOST:-0.0.0.0} --port ${LIBYAI_PORT:-8000}"]

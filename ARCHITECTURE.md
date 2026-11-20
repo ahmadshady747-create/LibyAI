@@ -42,10 +42,20 @@ the current, tested reality — not a wish list.
   and was removed in round 4. There is currently no live Gemini patient
   path; the live Gemini paths are admin-update parsing and data
   ingestion, both behind a configured key with a rule-based fallback.
-- Webhooks: the signed Meta webhook (`/webhook/whatsapp`) is the
-  production entry point; the legacy webhook (`/whatsapp/webhook`)
-  requires a valid Meta signature in production and accepts unsigned
-  local payloads only in development (see `SECURITY.md`).
+- Webhooks: the signed Meta webhook (`/webhook/whatsapp`,
+  `app/api/webhook.py`) is the production entry point. The legacy
+  webhook (`/whatsapp/webhook`, `router.py`) is legacy-only: it is
+  retained for the local simulator / direct-payload gateway path and
+  for backward compatibility with existing deployments. Both routes
+  enforce IDENTICAL fail-closed `X-Hub-Signature-256` verification in
+  production (see `SECURITY.md`): missing signature → 401, unconfigured
+  app secret → 403, invalid signature → 403, constant-time comparison,
+  and the signature is checked BEFORE the body is parsed or any
+  dispatch/mutation happens. The only intentional difference is that
+  the legacy route also accepts a simplified direct
+  `{sender, message}` JSON payload, and accepts unsigned payloads
+  only when `ENVIRONMENT` is not production (local development). New
+  integrations must use `/webhook/whatsapp`.
 
 ## Fixes from round 4 that belong here
 

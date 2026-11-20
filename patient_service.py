@@ -30,7 +30,13 @@ from app.services.time_utils import (
     LIBYA_TZ
 )
 
-preferred_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+from app.config import settings as _app_settings
+
+# The configured model (app/config.py GEMINI_MODEL, default
+# gemini-3.1-flash-lite, same as .env.example) heads the fallback chain,
+# so one setting controls the primary model everywhere. The same
+# GEMINI_MODEL environment variable still overrides it, via settings.
+preferred_model = _app_settings.GEMINI_MODEL
 MODELS_CASCADE = [preferred_model, "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-3.1-flash-lite"]
 _seen = set()
 MODELS_CASCADE = [m for m in MODELS_CASCADE if not (m in _seen or _seen.add(m))]

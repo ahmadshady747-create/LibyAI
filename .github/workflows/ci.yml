@@ -20,7 +20,7 @@ jobs:
       - name: Compile all Python files
         run: python -m compileall -q app db.py admin_service.py patient_service.py router.py job_queue.py simulator.py run.py
       - name: Run test suites
-        run: python -m pytest -q test_system.py test_system_integrity.py test_generic_multi_facility.py test_real_flow.py test_layer_authority.py scratch/
+        run: python -m pytest -q test_system.py test_system_integrity.py test_generic_multi_facility.py test_real_flow.py test_layer_authority.py test_security_regression.py test_sender_phone.py test_model_config.py
 
   docker:
     runs-on: ubuntu-latest

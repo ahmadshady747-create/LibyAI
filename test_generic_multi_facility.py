@@ -43,7 +43,7 @@ def run_tests():
     print(f"Bot Response:\n{resp_demo}")
 
     assert "النور" in resp_demo or "زليتن" in resp_demo, "Should identify Al-Noor or Zliten"
-    assert "عبدالله ديهوم" in resp_demo or "محمد ادراه" in resp_demo, "Should mention Friday orthopedics doctor"
+    assert "يوسف العربي" in resp_demo, "Should mention Friday orthopedics doctor"
     print("✅ Baseline Al-Noor Clinic Test Passed!")
 
     # -------------------------------------------------------------

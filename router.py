@@ -109,12 +109,6 @@ async def receive_webhook(request: Request):
     Parses incoming webhook events from Meta Cloud API or direct simulator payloads.
     """
     raw_body = await request.body()
-    try:
-        import json as _json
-
-        body = _json.loads(raw_body) if raw_body else {}
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     # Production gate: this endpoint previously accepted both Meta payloads
     # and direct sender/message payloads with no signature at all, so anyone
@@ -122,6 +116,9 @@ async def receive_webhook(request: Request):
     # In production every payload must carry a valid Meta HMAC signature,
     # exactly like the signed /webhook/whatsapp endpoint. Development keeps
     # the unsigned local path for simulator and gateway testing.
+    # The gate runs BEFORE JSON parsing, like the signed endpoint: an
+    # unauthenticated request is rejected (401/403) without the server
+    # spending any work on its body.
     if settings.ENVIRONMENT.strip().lower() == "production":
         signature_header = request.headers.get("X-Hub-Signature-256")
         app_secret = settings.WHATSAPP_APP_SECRET
@@ -136,6 +133,13 @@ async def receive_webhook(request: Request):
         ).hexdigest()
         if not hmac.compare_digest(signature_header, expected):
             raise HTTPException(status_code=403, detail="Invalid webhook signature.")
+
+    try:
+        import json as _json
+
+        body = _json.loads(raw_body) if raw_body else {}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     # Direct simplified JSON payload (e.g. from local simulator or gateway)
     if "sender" in body and "message" in body:

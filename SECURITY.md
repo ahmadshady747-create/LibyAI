@@ -39,12 +39,13 @@
   permitted. The default list is local origins only.
 
 ## Seed data and repository visibility
-- This repository must stay private until its seed data is audited: the
-  seed file describes a real facility and contains phone numbers that
-  have not been verified as fictional. Do not make the repository public,
-  and do not copy the seed data to a public demo, until those numbers
-  are replaced with fictional test data or confirmed as intended demo
-  data by the facility.
+- This repository is PUBLIC. Its seed data is fictional demo data only
+  (Al-Noor Demo Clinic, invented doctors/services/phones in
+  `seed_demo.py`); the real facility seed was replaced before the
+  repository was made public. Never commit real clinic data — real
+  facility names, real staff/doctor names, or real phone numbers — to
+  this repository: real clinic data stays out of git entirely and is
+  loaded only into a private deployment database.
 - Audit logs store raw message text. Before a production deployment,
   decide a retention period for audit logs and conversation history and
   enforce it; the current code has no automatic deletion for audit logs.

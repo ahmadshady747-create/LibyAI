@@ -267,8 +267,8 @@ def parse_staff_message_with_ai(clean_text: str) -> AdminUpdateIntent:
 1. طابق اسم الطبيب أو تخصصه من القائمة أعلاه. استخدم المطابقة الذكية:
    - "عظام" تطابق طبيب تخصصه "عظام ومفاصل"
    - "الباطنة" تطابق "باطنة وجهاز هضمي"
-   - "عبدالله" أو "ديهوم" تطابق "د. يوسف العربي"
-   - حتى لو كتب الاسم بشكل مختلف قليلاً (مثل عبدالله / عبد الله)
+   - "يوسف" أو "العربي" تطابق "د. يوسف العربي"
+   - حتى لو كتب الاسم بشكل مختلف قليلاً (مثل يوسف / يوسف العربي)
 
 2. إذا الرسالة فيها أمر تعديل لكن ما حدد الطبيب ولا التخصص بأي شكل:
    - is_valid_update = false, is_ambiguous = true
@@ -399,7 +399,7 @@ def handle_admin_group_message(
     # Clean the update mention
     clean_message = re.sub(tag_pattern, "", raw_message, flags=re.IGNORECASE).strip()
     if not clean_message:
-        return "👋 أهلاً بك زميلي في فريق الاستقبال. لتعديل جدول أو حالة طبيب، اكتب مثلاً:\n`@تحديث دكتور العظام عبدالله ديهوم اعتذر اليوم`"
+        return "👋 أهلاً بك زميلي في فريق الاستقبال. لتعديل جدول أو حالة طبيب، اكتب مثلاً:\n`@تحديث دكتور العظام يوسف العربي اعتذر اليوم`"
 
     # 2. Verify sender authorization
     is_auth, staff_role, staff_name = db.is_staff_authorized(sender_phone, db_path)

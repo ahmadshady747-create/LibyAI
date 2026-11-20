@@ -52,3 +52,8 @@ tmp/
 
 # System / Agent generated artifacts
 .system_generated/
+
+# Scratch test area (removed in the stabilization pass; its curated
+# security/regression assertions live in test_security_regression.py).
+# Local scratch files must never be committed again.
+scratch/

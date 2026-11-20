@@ -77,7 +77,7 @@ async def test_patient_ai_and_multiturn():
     # Turn 1
     resp1 = handle_patient_query(phone, "السلام عليكم، من دكتور العظام الموجود اليوم؟")
     print(f"\nTurn 1 Response:\n{resp1}\n")
-    assert "ديهوم" in resp1 or "عظام" in resp1 or "عبدالله" in resp1
+    assert "عظام" in resp1
     assert "⚠️" not in resp1
 
     await asyncio.sleep(1.5)
@@ -117,31 +117,33 @@ async def test_admin_service():
     await asyncio.sleep(1.5)
 
     # Test Valid Update 1: Doctor departed / apologized
-    valid_resp = handle_admin_group_message(auth_phone, "@Bot دكتور العظام عبدالله روح وما عادش يستقبل اليوم")
+    # "يوسف العربي" is the fictional orthopedics doctor present in both
+    # seed paths (db.py default seed and seed_demo.py).
+    valid_resp = handle_admin_group_message(auth_phone, "@Bot دكتور العظام يوسف العربي روح وما عادش يستقبل اليوم")
     print(f"\nAdmin Valid Update Receipt 1:\n{valid_resp}\n")
-    assert "عبدالله" in valid_resp or "ديهوم" in valid_resp
+    assert "يوسف" in valid_resp or "العربي" in valid_resp
     assert any(w in valid_resp for w in ["معتذر", "غادر", "روح", "apologized", "left"])
 
     # Verify DB directly
-    doc = find_doctor_fuzzy(name_query="عبدالله", specialty_query="عظام")
+    doc = find_doctor_fuzzy(name_query="يوسف العربي", specialty_query="عظام")
     assert doc is not None
     assert doc["status"] in ["apologized", "left"]
     print(f"  [PASS] SQLite state successfully mutated: status={doc.get('status')}")
 
     await asyncio.sleep(1.5)
 
-    # Patient asks about Dr Abdullah now
+    # Patient asks about Dr Youssef now
     check_phone = f"21892{int(time.time() * 1000) % 10000000:07d}"
-    patient_resp = handle_patient_query(check_phone, "هل دكتور العظام ديهوم متاح الآن للكشف؟")
+    patient_resp = handle_patient_query(check_phone, "هل دكتور العظام يوسف العربي متاح الآن للكشف؟")
     print(f"\nPatient Check After Doctor Apologized/Left:\n{patient_resp}\n")
     assert any(w in patient_resp for w in ["معتذر", "غادر", "روح", "غير متاح", "اعتذر", "انهى", "أنهى"])
 
     await asyncio.sleep(1.5)
 
     # Restore Doctor back to available
-    restore_resp = handle_admin_group_message(auth_phone, "@Bot دكتور عبدالله عظام متاح اليوم والكشف 40")
+    restore_resp = handle_admin_group_message(auth_phone, "@Bot دكتور يوسف العربي عظام متاح اليوم والكشف 40")
     print(f"\nAdmin Restore Receipt:\n{restore_resp}\n")
-    doc_after = find_doctor_fuzzy(name_query="عبدالله", specialty_query="عظام")
+    doc_after = find_doctor_fuzzy(name_query="يوسف العربي", specialty_query="عظام")
     assert doc_after["status"] == "available"
     print(f"  [PASS] SQLite state restored: status={doc_after.get('status')}")
 

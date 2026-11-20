@@ -562,7 +562,7 @@ def norm(text: str) -> str:
 def find_doctor_fuzzy(name_query: Optional[str] = None, specialty_query: Optional[str] = None, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
     """
     Intelligent fuzzy matcher for Libyan dialect variations:
-    Matches names or specialties (e.g. 'عظام', 'دكتور علي', 'ديهوم', 'اطفال').
+    Matches names or specialties (e.g. 'عظام', 'دكتور علي', 'يوسف العربي', 'اطفال').
     """
     all_docs = get_all_doctors(db_path)
     combined_query = f"{name_query or ''} {specialty_query or ''}".strip().lower()

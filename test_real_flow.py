@@ -60,7 +60,7 @@ def run_full_flow_test():
     # Assertions for Scenario 1
     assert "النور" in r1, "Response must mention Al-Noor Hospital"
     assert "0910101010" in r1 or "0930303030" in r1, "Response must include official hospital contact numbers"
-    # Check that either Abdullah Dayhoum or Mohamed Edrah or the day's orthopedics doctor is mentioned
+    # Check that the day's orthopedics doctor is mentioned
     daily_sched = db.get_daily_schedule(today_name)
     ortho_docs = [d["doctor_name"] for d in daily_sched["emergency_clinics"] if "عظام" in d["department"]]
     ortho_docs += [d["doctor_name"] for d in daily_sched["followup_clinics"] if "عظام" in d["specialty"]]
@@ -77,7 +77,7 @@ def run_full_flow_test():
     print(f"🤖 Bot Response:\n{r2}\n")
 
     # Assertions for Scenario 2: Bot must understand it's about orthopedics / the previous doctor
-    assert any(term in r2 for term in ["عظام", "ديهوم", "ادراه", "فترة", "صباحية", "مسائية", "ليلية", "الاستقبال"]), \
+    assert any(term in r2 for term in ["عظام", "فترة", "صباحية", "مسائية", "ليلية", "الاستقبال"]), \
         "Bot should retain conversation context regarding orthopedics doctor shifts"
     print("✅ Step 2 Passed: Multi-turn conversation history preserved context.")
 

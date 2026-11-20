@@ -253,7 +253,7 @@ def parse_admin_update(message_text: str) -> Dict[str, Any]:
 
 المطلوب:
 قم بتحليل المعنى واستخراج البيانات في هيئة JSON مطابق لـ AdminUpdateExtraction:
-- طابق الطبيب وتخصصه بدقة من القائمة أعلاه (مثال: "دكتور العظام" -> د. عبد الله ديهوم، "دكتور مسالك" -> د. سامي النور، "دكتور علي" -> د. سامي النور، "دكتور باطنة" -> د. أحمد الزليطني).
+- طابق الطبيب وتخصصه بدقة من القائمة أعلاه (مثال: "دكتور العظام" -> د. يوسف العربي، "دكتور مسالك" -> د. سامي النور، "دكتور علي" -> د. سامي النور، "دكتور باطنة" -> د. أحمد الزليطني).
 - حدد نوع الإجراء (action) بدقة بالغة:
   * DOCTOR_LEFT: الطبيب غادر العيادة أو أنهى كشوفاته لليوم (مثلاً: روح، غادر، كمل حالاته، مشى، طلع).
   * DOCTOR_ARRIVED: الطبيب وصل للعيادة ويباشر استقبال الحالات (مثلاً: وصل، قاعد في العيادة توا، باشر).
@@ -411,7 +411,7 @@ def fallback_patient_responder(query: str, context: str) -> str:
     )
 
 
-def generate_patient_response(user_message: str, chat_history: Optional[list] = None) -> str:
+def generate_patient_response(user_message: str, chat_history: Optional[list] = None, sender_phone: Optional[str] = None) -> str:
     """
     Patient inquiries are answered by the legacy patient_service, by
     design (see ARCHITECTURE.md). That path owns the triage guardrails,
@@ -419,9 +419,14 @@ def generate_patient_response(user_message: str, chat_history: Optional[list] = 
     second Gemini patient path here: an earlier version had one after
     this return statement, unreachable, which only misled readers about
     which path actually answers patients.
+
+    sender_phone is passed through to handle_patient_query so each
+    patient's conversation history is keyed by their own number; when
+    absent, the legacy "simulator_patient" key is kept for callers that
+    have no sender (e.g. direct script use).
     """
     import patient_service
-    return patient_service.handle_patient_query("simulator_patient", user_message)
+    return patient_service.handle_patient_query(sender_phone or "simulator_patient", user_message)
 
 
 def ingest_clinic_data_with_ai(
