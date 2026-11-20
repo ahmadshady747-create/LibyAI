@@ -10,7 +10,7 @@ async def main():
     print("==================================================")
     print("1. Testing Staff Group Tagged Message via Router:")
     admin_rep = await dispatch_message(
-        sender="0912345678",
+        sender="0920202020",
         message="@Bot دكتور العظام علي اعتذر اليوم",
         is_group=True,
         group_id="staff_group_1"
@@ -21,7 +21,7 @@ async def main():
     print("\n==================================================")
     print("2. Testing Staff Group Untagged Message (Should be ignored):")
     untagged_rep = await dispatch_message(
-        sender="0912345678",
+        sender="0920202020",
         message="السلام عليكم يا شباب شن الجو اليوم",
         is_group=True,
         group_id="staff_group_1"

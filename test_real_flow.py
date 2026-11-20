@@ -21,7 +21,7 @@ if sys.platform == "win32":
         pass
 
 import db
-from seed_jasmine_hospital import seed_jasmine
+from seed_demo import seed_demo
 import patient_service
 import admin_service
 from app.services.time_utils import get_libya_datetime_context
@@ -33,8 +33,8 @@ def run_full_flow_test():
     print("=" * 70)
 
     # 0. Clean & Seed Fresh Database
-    print("\n--- 0. Seeding Jasmine Shelter Hospital Data ---")
-    seed_jasmine()
+    print("\n--- 0. Seeding Al-Noor Demo Clinic Data ---")
+    seed_demo()
     conn = sqlite3.connect(db.DB_PATH)
     conn.execute("DELETE FROM daily_overrides;")
     conn.execute("DELETE FROM conversation_history;")
@@ -48,7 +48,7 @@ def run_full_flow_test():
     print(f"📅 Current Libya Day: {today_name} ({time_ctx['date_arabic']})")
 
     patient_phone = "0915554433"
-    staff_phone = "0911059900"  # Registered owner
+    staff_phone = "0910101010"  # Registered owner
 
     # Scenario 1: Patient asks about Orthopedics or a doctor present today
     print(f"\n--- 1. Patient Inquiry: Who is the Orthopedics doctor today ({today_name})? ---")
@@ -58,8 +58,8 @@ def run_full_flow_test():
     print(f"🤖 Bot Response:\n{r1}\n")
 
     # Assertions for Scenario 1
-    assert "الياسمين" in r1, "Response must mention Jasmine Hospital"
-    assert "0911059900" in r1 or "0945361562" in r1, "Response must include official hospital contact numbers"
+    assert "النور" in r1, "Response must mention Al-Noor Hospital"
+    assert "0910101010" in r1 or "0930303030" in r1, "Response must include official hospital contact numbers"
     # Check that either Abdullah Dayhoum or Mohamed Edrah or the day's orthopedics doctor is mentioned
     daily_sched = db.get_daily_schedule(today_name)
     ortho_docs = [d["doctor_name"] for d in daily_sched["emergency_clinics"] if "عظام" in d["department"]]
@@ -82,7 +82,7 @@ def run_full_flow_test():
     print("✅ Step 2 Passed: Multi-turn conversation history preserved context.")
 
     # Target doctor to apologize for
-    target_doc = ortho_docs[0] if ortho_docs else "د. عبدالله ديهوم"
+    target_doc = ortho_docs[0] if ortho_docs else "د. يوسف العربي"
     clean_target_name = target_doc.replace("د.", "").strip()
 
     # Scenario 3: Staff sends @تحديث to apologize for doctor

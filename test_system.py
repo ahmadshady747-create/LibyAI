@@ -35,15 +35,15 @@ def test_full_pipeline():
 
     print("\n>>> 4. Testing Admin Update with @Bot (Doctor Apology)...")
     # Use the actual Thursday emergency orthopedics doctor from the current
-    # Jasmine seed. The old message named a doctor who no longer exists in
+    # Al-Noor seed. The old message named a doctor who no longer exists in
     # this seed, so fuzzy matching updated a different orthopedics doctor
     # and the patient view (which shows the Thursday schedule) correctly
     # kept showing the schedule doctor as available.
     admin_msg = "@Bot دكتور العظام عبدالله ديهوم اعتذر اليوم ومش حيكون متواجد."
     # A group update sender must be a real authorized phone number, not a
     # display name: authorization is checked against staff phone numbers.
-    # This number is the seeded test staff number in seed_jasmine_hospital.py.
-    admin_reply = admin_processor.process_admin_group_message("0912345678", admin_msg)
+    # This number is the seeded test staff number in seed_demo.py.
+    admin_reply = admin_processor.process_admin_group_message("0920202020", admin_msg)
     print("Admin Confirmation Reply:")
     print(admin_reply)
 

@@ -18,7 +18,7 @@ import db
 
 def test_phone_authorization_security():
     print("--- 1. Testing Phone Authorization Security ---")
-    authorized_list = "0912345678, 0921111111, 218912345678"
+    authorized_list = "0920202020, 0921111111, 218912345678"
 
     # Should FAIL (Unauthorized spoofing attempts)
     assert not is_phone_authorized("admin", authorized_list), "Spoofed 'admin' should NOT be authorized!"
@@ -31,7 +31,7 @@ def test_phone_authorization_security():
     assert not is_phone_authorized("", authorized_list), "Empty string should NOT be authorized!"
 
     # Should SUCCEED (Legitimate authorized numbers in various formats)
-    assert is_phone_authorized("0912345678", authorized_list), "0912345678 should be authorized!"
+    assert is_phone_authorized("0920202020", authorized_list), "0920202020 should be authorized!"
     assert is_phone_authorized("+218 91 234 5678", authorized_list), "+218 91 234 5678 should be authorized!"
     assert is_phone_authorized("218912345678", authorized_list), "218912345678 should be authorized!"
     assert is_phone_authorized("٠٩١٢٣٤٥٦٧٨", authorized_list), "Arabic numeral phone should be authorized!"

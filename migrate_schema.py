@@ -40,7 +40,7 @@ def run_migration():
     cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('name', ?);", (clinic_name,))
     cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('clinic_name', ?);", (clinic_name,))
 
-    auth_phones = info_dict.get('authorized_staff_phones') or info_dict.get('authorized_phones') or '0912345678, 0921111111, admin, staff'
+    auth_phones = info_dict.get('authorized_staff_phones') or info_dict.get('authorized_phones') or '0920202020, 0921111111, admin, staff'
     cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('authorized_staff_phones', ?);", (auth_phones,))
     cursor.execute("INSERT OR REPLACE INTO clinic_info (key, value) VALUES ('authorized_phones', ?);", (auth_phones,))
 

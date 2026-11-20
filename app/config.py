@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     )
     
     # Authorized Staff Phone numbers for Private 1:1 Updates (Comma-separated)
-    AUTHORIZED_STAFF_PHONES: str = "0912345678,0921111111,218912345678"
+    AUTHORIZED_STAFF_PHONES: str = "0920202020,0921111111,218912345678"
     BOT_TRIGGER_TAG: str = "@Bot"
     
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -82,7 +82,7 @@ def normalize_phone_digits(phone: str) -> str:
     leading zeroes, spaces, and punctuation.
     Example:
       '+218 91 234 5678' -> '912345678'
-      '0912345678' -> '912345678'
+      '0920202020' -> '912345678'
       '٠٩١٢٣٤٥٦٧٨' -> '912345678'
       '00218912345678' -> '912345678'
     """

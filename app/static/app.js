@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const headerClinicTitle = document.getElementById("headerClinicTitle");
   const patientHeaderTitle = document.getElementById("patientHeaderTitle");
 
-  let currentAuthorizedPhones = "0912345678, 0921111111, 218912345678";
+  let currentAuthorizedPhones = "0920202020, 0921111111, 218912345678";
 
   function escapeHtml(text) {
     if (text === null || text === undefined) return "";
@@ -83,7 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (setSenderAuthorizedBtn) {
     setSenderAuthorizedBtn.addEventListener("click", () => {
       const tokens = currentAuthorizedPhones.split(/[,،;؛\s\n\r|/]+/).map(t => t.trim()).filter(Boolean);
-      const firstValid = tokens.find(t => !["admin", "staff"].includes(t.toLowerCase())) || tokens[0] || "0912345678";
+      const firstValid = tokens.find(t => !["admin", "staff"].includes(t.toLowerCase())) || tokens[0] || "0920202020";
       staffSenderPhone.value = firstValid;
       updateAuthBadge();
     });
@@ -291,7 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const msg = adminInput.value.trim();
     if (!msg) return;
 
-    const senderPhone = staffSenderPhone ? staffSenderPhone.value.trim() : "0912345678";
+    const senderPhone = staffSenderPhone ? staffSenderPhone.value.trim() : "0920202020";
     const isAuth = checkPhoneAuthorized(senderPhone);
     const senderDisplay = isAuth ? `الموظف المصرح له (${senderPhone})` : `رقم غير مصرح به (${senderPhone})`;
 

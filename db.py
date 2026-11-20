@@ -323,7 +323,7 @@ def init_db(db_path: str = DB_PATH) -> None:
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS conversation_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clinic_id TEXT NOT NULL DEFAULT 'jasmine_hospital',
+            clinic_id TEXT NOT NULL DEFAULT 'demo_hospital',
             sender_phone TEXT NOT NULL,
             role TEXT NOT NULL CHECK(role IN ('user', 'model', 'system')),
             message_text TEXT NOT NULL,
@@ -337,9 +337,9 @@ def seed_default_data(db_path: str = DB_PATH, preset: Optional[str] = None) -> N
     """Populates default clinic identity, doctors, and services if tables are empty."""
     with get_db(db_path) as conn:
         cursor = conn.cursor()
-        if preset == "jasmine":
-            from seed_jasmine_hospital import seed_jasmine
-            seed_jasmine(db_path)
+        if preset == "demo":
+            from seed_demo import seed_demo
+            seed_demo(db_path)
             return
 
         cursor.execute("SELECT COUNT(*) AS cnt FROM emergency_clinics;")
@@ -369,11 +369,11 @@ def seed_default_data(db_path: str = DB_PATH, preset: Optional[str] = None) -> N
         cursor.execute("SELECT COUNT(*) AS cnt FROM doctors;")
         if cursor.fetchone()["cnt"] == 0:
             doctors_data = [
-                ("د. عبدالله ديهوم", "عظام ومفاصل", "السبت إلى الخميس: 09:00 ص - 01:00 م", "available", "", 40.0),
-                ("د. علي بن عمران", "مسالك بولية وعقم ذكورة", "السبت، الإثنين، الأربعاء: 04:00 م - 08:00 م", "available", "", 45.0),
+                ("د. يوسف العربي", "عظام ومفاصل", "السبت إلى الخميس: 09:00 ص - 01:00 م", "available", "", 40.0),
+                ("د. سامي النور", "مسالك بولية وعقم ذكورة", "السبت، الإثنين، الأربعاء: 04:00 م - 08:00 م", "available", "", 45.0),
                 ("د. أحمد الزليطني", "باطنة عامة وسكري", "يومياً عدا الجمعة: 10:00 ص - 02:00 م", "available", "", 40.0),
                 ("د. فاطمة الورفلي", "عيون وجراحة البصر", "الأحد، الثلاثاء، الخميس: 04:00 م - 07:30 م", "available", "", 50.0),
-                ("د. عبدالعاطي المشيطي", "أطفال وحديثي ولادة", "يومياً: 10:00 ص - 01:00 م ومن 05:00 م - 08:00 م", "available", "", 35.0),
+                ("د. يوسف السالم", "أطفال وحديثي ولادة", "يومياً: 10:00 ص - 01:00 م ومن 05:00 م - 08:00 م", "available", "", 35.0),
             ]
             cursor.executemany("""
             INSERT INTO doctors (name, specialty, regular_schedule, status, daily_note, consultation_fee)
@@ -908,7 +908,7 @@ def cleanup_expired_sessions(ttl_minutes: int = 60, db_path: str = DB_PATH) -> i
 
 
 # ==========================================
-# Jasmine Shelter Hospital - Dynamic Schedule & Overrides
+# Al-Noor Demo Clinic - Dynamic Schedule & Overrides
 # ==========================================
 
 def normalize_day_name(day_str: str) -> str:
@@ -927,7 +927,7 @@ def normalize_day_name(day_str: str) -> str:
 
 def get_daily_schedule(day_name: str, target_date: Optional[str] = None, db_path: str = DB_PATH) -> Dict[str, Any]:
     """
-    Real-time query for Jasmine Shelter Hospital schedule for a given day:
+    Real-time query for Al-Noor Demo Clinic schedule for a given day:
     - Queries emergency_clinics (morning, evening, night).
     - Queries followup_clinics.
     - Merges active daily_overrides for target_date.
@@ -1107,7 +1107,7 @@ def add_conversation_history(
     sender_phone: str,
     role: str,
     message_text: str,
-    clinic_id: str = "jasmine_hospital",
+    clinic_id: str = "demo_hospital",
     db_path: str = DB_PATH
 ) -> None:
     """Records a message turn in conversation_history and conversation_sessions."""
@@ -1129,7 +1129,7 @@ def add_conversation_history(
 def get_conversation_history(
     sender_phone: str,
     limit: int = 6,
-    clinic_id: str = "jasmine_hospital",
+    clinic_id: str = "demo_hospital",
     db_path: str = DB_PATH
 ) -> List[Dict[str, str]]:
     """

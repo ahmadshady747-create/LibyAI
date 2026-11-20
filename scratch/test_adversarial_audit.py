@@ -50,7 +50,7 @@ def test_q1_admin_mutation_double_execution():
     q.enqueue_incoming_message(
         provider="whatsapp",
         message_id=wamid,
-        sender="0912345678", # authorized staff
+        sender="0920202020", # authorized staff
         message_text="@Bot دكتور ديهوم اعتذر اليوم",
         is_group=True,
         group_id="staff_group"
@@ -190,7 +190,7 @@ def test_q3_incoming_and_jobs_atomicity():
             cursor.execute("""
                 INSERT INTO incoming_messages (provider, message_id, sender, payload_json, created_at)
                 VALUES (?, ?, ?, ?, ?);
-            """, ("whatsapp", wamid, "0912345678", "{}", now))
+            """, ("whatsapp", wamid, "0920202020", "{}", now))
             
             # Simulated crash / disk error / unhandled exception before message_jobs insert:
             raise sqlite3.OperationalError("Simulated disk error or crash before message_jobs insert")

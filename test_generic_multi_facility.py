@@ -1,10 +1,10 @@
 """
 LibyAI Multi-Facility Generality Test (`test_generic_multi_facility.py`)
 Validates that LibyAI is completely facility-agnostic and dynamically configurable:
-1. Works for any clinic (e.g. Jasmine Shelter Hospital in Zliten).
+1. Works for any clinic (e.g. Al-Noor Demo Clinic in Zliten).
 2. Dynamically switches to another medical clinic (e.g. مصحة الأمل التخصصية in Benghazi) with ZERO code changes.
 3. Dynamically switches to a non-medical service facility (e.g. مجموعة الرواد للاستشارات والتدريب in Tripoli).
-4. Restores Jasmine Hospital baseline cleanly.
+4. Restores Al-Noor Hospital baseline cleanly.
 """
 
 import sys
@@ -19,7 +19,7 @@ if sys.platform == "win32":
 
 import db
 import patient_service
-from seed_jasmine_hospital import seed_jasmine
+from seed_demo import seed_demo
 
 
 def run_tests():
@@ -28,23 +28,23 @@ def run_tests():
     print("=" * 70)
 
     # -------------------------------------------------------------
-    # 1. Jasmine Shelter Hospital (Zliten) Baseline
+    # 1. Al-Noor Demo Clinic (Zliten) Baseline
     # -------------------------------------------------------------
-    print("\n--- 1. Testing Baseline Facility (مستشفى الياسمين الإيوائي - زليتن) ---")
-    seed_jasmine()
+    print("\n--- 1. Testing Baseline Facility (مصحة النور التجريبية - زليتن) ---")
+    seed_demo()
     prof = db.get_facility_profile()
     print(f"Facility Name: {prof['name']}")
     print(f"Address:       {prof['address']}")
     print(f"City:          {prof['city']}")
     print(f"Phones:        {prof['contact_numbers']}")
 
-    resp_jasmine = patient_service.handle_patient_query("0915550001", "شن عنوانكم ومن دكتور العظام المتواجد يوم الجمعة؟")
+    resp_demo = patient_service.handle_patient_query("0915550001", "شن عنوانكم ومن دكتور العظام المتواجد يوم الجمعة؟")
     print("\nPatient Query: شن عنوانكم ومن دكتور العظام المتواجد يوم الجمعة؟")
-    print(f"Bot Response:\n{resp_jasmine}")
+    print(f"Bot Response:\n{resp_demo}")
 
-    assert "الياسمين" in resp_jasmine or "زليتن" in resp_jasmine, "Should identify Jasmine or Zliten"
-    assert "عبدالله ديهوم" in resp_jasmine or "محمد ادراه" in resp_jasmine, "Should mention Friday orthopedics doctor"
-    print("✅ Baseline Jasmine Clinic Test Passed!")
+    assert "النور" in resp_demo or "زليتن" in resp_demo, "Should identify Al-Noor or Zliten"
+    assert "عبدالله ديهوم" in resp_demo or "محمد ادراه" in resp_demo, "Should mention Friday orthopedics doctor"
+    print("✅ Baseline Al-Noor Clinic Test Passed!")
 
     # -------------------------------------------------------------
     # 2. Dynamic Switch to Another Clinic (مصحة الأمل التخصصية - بنغازي)
@@ -91,9 +91,9 @@ def run_tests():
     # Strict Generality Assertions
     assert "الأمل" in resp_amal or "بنغازي" in resp_amal, "Must identify as Al-Amal or Benghazi"
     assert "طارق المجبري" in resp_amal, "Must identify Al-Amal surgeon Dr. Tareq Al-Mejbari"
-    assert "الياسمين" not in resp_amal, "CRITICAL ERROR: Jasmine must NOT appear for Al-Amal!"
+    assert "النور" not in resp_amal, "CRITICAL ERROR: Al-Noor must NOT appear for Al-Amal!"
     assert "زليتن" not in resp_amal, "CRITICAL ERROR: Zliten must NOT appear for Al-Amal!"
-    assert "0911059900" not in resp_amal, "CRITICAL ERROR: Jasmine phone must NOT appear for Al-Amal!"
+    assert "0910101010" not in resp_amal, "CRITICAL ERROR: Al-Noor phone must NOT appear for Al-Amal!"
     print("✅ Dynamic Clinic Switch to Al-Amal Passed 100% Zero-Hardcoding!")
 
     # -------------------------------------------------------------
@@ -135,15 +135,15 @@ def run_tests():
 
     assert "الرواد" in resp_rowad or "طرابلس" in resp_rowad, "Must identify as Al-Rowad or Tripoli"
     assert "سالم الورفلي" in resp_rowad, "Must identify consultant Salem Al-Warfali"
-    assert "الياسمين" not in resp_rowad, "Must not mention Jasmine"
+    assert "النور" not in resp_rowad, "Must not mention Al-Noor"
     assert "زليتن" not in resp_rowad, "Must not mention Zliten"
     print("✅ Non-Medical Facility Generality Test Passed 100%!")
 
     # -------------------------------------------------------------
-    # 4. Clean Baseline Restoration (Jasmine Shelter Hospital)
+    # 4. Clean Baseline Restoration (Al-Noor Demo Clinic)
     # -------------------------------------------------------------
-    print("\n--- 4. Restoring Jasmine Shelter Hospital Baseline ---")
-    seed_jasmine()
+    print("\n--- 4. Restoring Al-Noor Demo Clinic Baseline ---")
+    seed_demo()
     final_prof = db.get_facility_profile()
     print(f"Restored Facility: {final_prof['name']} in {final_prof['city']}")
     print("=" * 70)

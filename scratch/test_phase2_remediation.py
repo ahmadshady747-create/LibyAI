@@ -107,7 +107,7 @@ def test_2_admin_mutation_transaction_rollback_on_crash():
     is_new, job_id, _ = q.enqueue_incoming_message(
         provider="whatsapp",
         message_id=wamid,
-        sender="0912345678",
+        sender="0920202020",
         message_text="@Bot دكتور ديهوم اعتذر اليوم",
         is_group=True,
         group_id="staff_group"
@@ -168,7 +168,7 @@ def test_3_duplicate_admin_message_recovery_idempotency():
     is_new, job_id, _ = q.enqueue_incoming_message(
         provider="whatsapp",
         message_id=wamid,
-        sender="0912345678",
+        sender="0920202020",
         message_text="@Bot دكتور ديهوم اعتذر اليوم",
         is_group=True,
         group_id="staff_group"
@@ -188,7 +188,7 @@ def test_3_duplicate_admin_message_recovery_idempotency():
     import admin_service
     # Direct execution of handle_admin_group_message with same job_id
     receipt2 = admin_service.handle_admin_group_message(
-        sender_phone="0912345678",
+        sender_phone="0920202020",
         raw_message="@Bot دكتور ديهوم اعتذر اليوم",
         group_id="staff_group",
         job_id=job_id,
@@ -209,7 +209,7 @@ def test_3_duplicate_admin_message_recovery_idempotency():
             conn.cursor().execute("""
                 INSERT INTO audit_logs (admin_sender, raw_message, status_before, status_after, confirmation_text, message_job_id)
                 VALUES (?, ?, ?, ?, ?, ?);
-            """, ("0912345678", "raw duplicate", "{}", "{}", "receipt", job_id))
+            """, ("0920202020", "raw duplicate", "{}", "{}", "receipt", job_id))
             assert False, "UNIQUE constraint on message_job_id should have blocked duplicate insert!"
         except sqlite3.IntegrityError:
             print("  ✅ UNIQUE(message_job_id) constraint verified in DB: blocked duplicate audit log insertion!")

@@ -67,7 +67,7 @@ check_simulator_write_access = check_simulator_admin_access
 
 
 class SimulatorMessageRequest(BaseModel):
-    sender: str = "0912345678"
+    sender: str = "0920202020"
     message: str
 
 

@@ -1,10 +1,10 @@
 """
 Seed database script for app layer:
-Seeds Jasmine Shelter Hospital data into SQLite database.
+Seeds Al-Noor Demo Clinic data into SQLite database.
 """
 
-from seed_jasmine_hospital import seed_jasmine
+from seed_demo import seed_demo
 
 
 def seed_database():
-    seed_jasmine()
+    seed_demo()

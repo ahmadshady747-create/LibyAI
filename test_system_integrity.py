@@ -101,7 +101,7 @@ async def test_admin_service():
     # Use the seeded test staff number: the previous number was not in the
     # seeded authorized list, so every "valid" update was rejected as
     # unauthorized and the test could never pass.
-    auth_phone = "0912345678"
+    auth_phone = "0920202020"
     unauth_phone = "0990000000"
 
     # Test Unauthorized

@@ -97,12 +97,12 @@ def test_webhook_patient_dispatch():
     }
     raw_bytes, headers = sign_test_payload(patient_payload)
     mock_send = AsyncMock(return_value="outbound_msg_id")
-    with patch("patient_service.handle_patient_query", return_value="د. عبدالله ديهوم متاح من السبت للخميس") as mock_patient:
+    with patch("patient_service.handle_patient_query", return_value="د. يوسف العربي متاح من السبت للخميس") as mock_patient:
         res = client.post("/webhook/whatsapp", content=raw_bytes, headers=headers)
         assert res.status_code == 200
         asyncio.run(job_queue.process_next_job(send_reply_func=mock_send))
         mock_patient.assert_called_once()
-        mock_send.assert_called_once_with(to="0918887766", message="د. عبدالله ديهوم متاح من السبت للخميس")
+        mock_send.assert_called_once_with(to="0918887766", message="د. يوسف العربي متاح من السبت للخميس")
     print("✅ Webhook Patient Unified Routing Passed!")
 
 
@@ -149,7 +149,7 @@ def test_simulator_state_resilience():
         conn.cursor().execute("""
         INSERT INTO audit_logs (admin_sender, raw_message, status_before, status_after, confirmation_text)
         VALUES (?, ?, ?, ?, ?);
-        """, ("0912345678", "تعديل تجريبي", "{}", "{}", "تم التعديل بنجاح"))
+        """, ("0920202020", "تعديل تجريبي", "{}", "{}", "تم التعديل بنجاح"))
         
     res = client.get("/api/simulator/state")
     assert res.status_code == 200

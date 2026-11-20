@@ -27,7 +27,7 @@ router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 
 
 class DirectMessagePayload(BaseModel):
-    sender: str = Field(description="Sender phone number, e.g. 0912345678")
+    sender: str = Field(description="Sender phone number, e.g. 0920202020")
     message: str = Field(description="Incoming message text")
     is_group: bool = Field(default=False, description="True if sent within WhatsApp Staff Group")
     group_id: Optional[str] = Field(default=None, description="Group ID if applicable")

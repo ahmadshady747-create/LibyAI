@@ -47,7 +47,7 @@ async def test_admin_service_validation():
 
     try:
         reply = admin_service.handle_admin_group_message(
-            sender_phone="0912345678",
+            sender_phone="0920202020",
             raw_message="@Bot دكتور ديهوم اعتذر اليوم",
             group_id="test_group"
         )
@@ -71,7 +71,7 @@ async def test_admin_service_validation():
 
         admin_service.parse_staff_message_with_ai = lambda msg: FakeFeeIntent()
         fee_reply = admin_service.handle_admin_group_message(
-            sender_phone="0912345678",
+            sender_phone="0920202020",
             raw_message="@Bot كشفية دكتور ديهوم صارت -50",
             group_id="test_group"
         )
@@ -112,7 +112,7 @@ async def test_router_async_group():
     print("--- 4. Testing Non-Blocking Router Dispatch ---")
     # Test dispatch_message with is_group=True runs non-blocking
     reply = await dispatch_message(
-        sender="0912345678",
+        sender="0920202020",
         message="@Bot كشفية عيادة العظام",
         is_group=True,
         group_id="clinic_group"

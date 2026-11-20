@@ -38,7 +38,7 @@ def test_full_scenario():
     print("2. Testing Admin Update: 'دكتور العظام غادر العيادة وروح خلاص'")
     t0 = time.time()
     res = client.post(f"/api/simulator/admin-message", json={
-        "sender": "0912345678",
+        "sender": "0920202020",
         "message": "دكتور العظام غادر العيادة وروح خلاص"
     })
     elapsed = time.time() - t0
@@ -84,7 +84,7 @@ def test_full_scenario():
     print("\n==================================================")
     print("4. Testing Admin Update: 'دكتور الباطنة وصل وبدأ يستقبل كشوفات'")
     res = client.post(f"/api/simulator/admin-message", json={
-        "sender": "0912345678",
+        "sender": "0920202020",
         "message": "دكتور الباطنة وصل وبدأ يستقبل كشوفات"
     })
     print(f"Admin Reply:\n{res.json()['reply']}")
@@ -97,7 +97,7 @@ def test_full_scenario():
     print("\n==================================================")
     print("5. Testing Admin Update: 'وقفوا حجز عيادة الأطفال خلاص اكتفوا بالعدد اليوم'")
     res = client.post(f"/api/simulator/admin-message", json={
-        "sender": "0912345678",
+        "sender": "0920202020",
         "message": "وقفوا حجز عيادة الأطفال خلاص اكتفوا بالعدد اليوم"
     })
     print(f"Admin Reply:\n{res.json()['reply']}")
@@ -122,7 +122,7 @@ def test_full_scenario():
     print("\n==================================================")
     print("7. Testing Casual Chatter from Staff (Should be cleanly ignored):")
     res = client.post(f"/api/simulator/admin-message", json={
-        "sender": "0912345678",
+        "sender": "0920202020",
         "message": "شن جو الشغل اليوم؟"
     })
     print(f"Chatter Response: {res.json()}")

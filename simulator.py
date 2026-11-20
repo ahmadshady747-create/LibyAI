@@ -151,7 +151,7 @@ async def run_admin_updates_simulation():
     print("\n" + "─" * 65)
     print("▶ [SCENARIO 5]: Staff Admin Group Updates & Fail-Safe NLP")
     print("─" * 65)
-    admin_phone = "0912345678"
+    admin_phone = "0920202020"
 
     # 1. Ambiguity Rejection
     print("1. Testing Ambiguous Directive (No doctor/specialty specified):")
@@ -218,7 +218,7 @@ async def run_live_console():
     print("  2. Staff Admin Group Mode (Use @Bot to issue commands)")
     mode = input("Enter choice (1 or 2): ").strip()
     is_group = (mode == "2")
-    sender = "0912345678" if is_group else "0910001122"
+    sender = "0920202020" if is_group else "0910001122"
 
     print(f"\nRunning as {'STAFF ADMIN' if is_group else 'PATIENT'} ({sender}). Type your message:")
     while True:

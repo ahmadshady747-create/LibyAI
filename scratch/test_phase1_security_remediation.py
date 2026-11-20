@@ -34,7 +34,7 @@ def test_missing_signature():
             "changes": [{
                 "value": {
                     "messages": [{
-                        "from": "0912345678",
+                        "from": "0920202020",
                         "type": "text",
                         "text": {"body": "مرحبا"}
                     }]
@@ -115,7 +115,7 @@ def test_payload_tampering_after_signing():
             "changes": [{
                 "value": {
                     "messages": [{
-                        "from": "0912345678", # attacker changed sender to staff
+                        "from": "0920202020", # attacker changed sender to staff
                         "type": "text",
                         "text": {"body": "@Bot دكتور العظام روح"}
                     }]
@@ -169,7 +169,7 @@ def test_unauthorized_clinic_settings_access():
         settings.ENVIRONMENT = orig_env
         settings.ENABLE_PROD_SIMULATOR = orig_enabled
         # Restore exact default clinic settings and authorized phones
-        default_phones = "0912345678, 0921111111, 218912345678"
+        default_phones = "0920202020, 0921111111, 218912345678"
         db.update_clinic_info_key("authorized_phones", default_phones)
         db.update_clinic_info_key("authorized_staff_phones", default_phones)
         db.update_clinic_info_key("clinic_name", "مصحة الشفاء التخصصية")
@@ -232,7 +232,7 @@ def test_rejected_requests_cause_no_side_effects():
             "changes": [{
                 "value": {
                     "messages": [{
-                        "from": "0912345678", # legitimate staff phone
+                        "from": "0920202020", # legitimate staff phone
                         "type": "text",
                         "text": {"body": "@Bot دكتور ديهوم اعتذر اليوم"}
                     }]

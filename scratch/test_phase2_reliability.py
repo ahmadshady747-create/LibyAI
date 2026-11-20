@@ -44,7 +44,7 @@ def test_duplicate_webhook_delivery():
                 "value": {
                     "messages": [{
                         "id": wamid,
-                        "from": "0912345678",
+                        "from": "0920202020",
                         "type": "text",
                         "text": {"body": "شن مواعيد العيادة؟"}
                     }]
@@ -95,7 +95,7 @@ def test_concurrent_delivery_same_wamid():
         return q.enqueue_incoming_message(
             provider="whatsapp",
             message_id=wamid,
-            sender="0912345678",
+            sender="0920202020",
             message_text="رسالة متزامنة"
         )
 
@@ -129,7 +129,7 @@ def test_application_restart_with_pending_jobs():
     is_new, job_id, status = q.enqueue_incoming_message(
         provider="whatsapp",
         message_id=wamid,
-        sender="0912345678",
+        sender="0920202020",
         message_text="رسالة قبل إعادة التشغيل"
     )
     assert is_new is True
@@ -166,7 +166,7 @@ def test_worker_crash_and_lease_recovery():
     is_new, job_id, status = q.enqueue_incoming_message(
         provider="whatsapp",
         message_id=wamid,
-        sender="0912345678",
+        sender="0920202020",
         message_text="رسالة لعامل ميت"
     )
 
@@ -366,7 +366,7 @@ def test_admin_command_deduplication():
                 "value": {
                     "messages": [{
                         "id": wamid_admin,
-                        "from": "0912345678", # authorized staff
+                        "from": "0920202020", # authorized staff
                         "type": "text",
                         "text": {"body": "@Bot دكتور ديهوم اعتذر اليوم"}
                     }]

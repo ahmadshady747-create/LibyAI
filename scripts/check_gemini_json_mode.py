@@ -16,7 +16,7 @@ prompt = """
   "is_ambiguous": false,
   "ambiguity_reason": null,
   "action": "DOCTOR_STATUS_UPDATE",
-  "doctor_identifier": "د. عبدالله ديهوم",
+  "doctor_identifier": "د. يوسف العربي",
   "new_status": "left",
   "daily_note": "أنهى كشوفات اليوم وغادر المصحة",
   "new_price": null,
